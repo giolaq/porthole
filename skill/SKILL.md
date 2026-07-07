@@ -12,6 +12,13 @@ iOS, physical Android devices, or audio.
    porthole list -q
    ```
 
+   If anything fails at any step (SDK missing, port busy, offline adb,
+   missing scrcpy-server), diagnose first:
+
+   ```sh
+   porthole doctor -q
+   ```
+
 2. Start a session. Prefer detached JSON mode for automation:
 
    ```sh
@@ -66,6 +73,10 @@ porthole open-url "example://deep/link"
 For TV AVDs, use `remote`, then `focused`, then assert the focused node's
 `text`, `resourceId`, or `contentDesc`. For phones, `find_element` is exposed
 through MCP and can tap the center of a matching node.
+
+Note: `focused` is a D-pad/leanback concept. On phone profiles it usually
+returns `null` — that is expected, not an error; use `dump-ui` or
+`find_element` on phones instead.
 
 ## MCP Loop
 
