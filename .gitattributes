@@ -1,0 +1,4 @@
+# Keep LF endings on checkout everywhere (Windows included) so prettier
+# --check sees the same bytes as the committed files.
+* text=auto eol=lf
+*.png binary
