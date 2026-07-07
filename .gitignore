@@ -3,5 +3,7 @@ dist/
 *.tsbuildinfo
 packages/porthole/assets/
 packages/porthole/client-dist/
+packages/assets/*
+!packages/assets/.gitkeep
 assets/*
 !assets/porthole-logo.png

@@ -21,7 +21,7 @@ Full requirements and milestones live in `docs/PRD.md`. This file covers convent
 porthole/
   package.json              npm workspaces root
   assets/
-    scrcpy-server           pinned scrcpy-server jar
+    porthole-logo.png       project logo
   packages/
     porthole/               CLI + server + engine + MCP (src/)
     porthole-client/        React preview UI (src/)
@@ -50,6 +50,7 @@ Integration tests (require a booted emulator) are gated behind `PORTHOLE_EMU=1`.
 - Filenames: kebab-case. Small, single-purpose modules.
 - Engine details must not leak past the `Engine` interface into CLI/client/MCP.
 - Before using any `@yume-chan/*` API, verify it against current npm docs — do not rely on memorized signatures.
+- Do not commit `scrcpy-server`; it is downloaded at install time by `packages/porthole/scripts/download-scrcpy-server.mjs` and SHA-256 verified.
 - Respect non-goals in `docs/PRD.md` §4: no iOS, no physical devices, no audio.
 - Pure-logic unit tests (config.ini parsing, keycodes, CLI args) need no emulator.
 - Published package name: `portholejs` (bin: `porthole`).
