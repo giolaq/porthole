@@ -1,25 +1,39 @@
 {
   "name": "portholejs",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A window into your Android emulator — stream and control AVDs from the browser",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "porthole": "./dist/cli.js"
+    "porthole": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc && node scripts/copy-package-assets.mjs",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node scripts/download-scrcpy-server.mjs"
+    "postinstall": "node scripts/download-scrcpy-server.mjs",
+    "prepublishOnly": "npm run build --prefix ../.."
   },
   "keywords": [
     "android",
     "emulator",
+    "android-tv",
     "scrcpy",
-    "mcp"
+    "adb",
+    "avd",
+    "mcp",
+    "claude"
   ],
   "license": "Apache-2.0",
+  "author": "Giovanni Laquidara (https://github.com/giolaq)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giolaq/porthole.git"
+  },
+  "homepage": "https://github.com/giolaq/porthole#readme",
+  "bugs": {
+    "url": "https://github.com/giolaq/porthole/issues"
+  },
   "files": [
     "dist/",
     "!dist/__tests__/",
