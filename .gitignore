@@ -7,3 +7,5 @@ packages/assets/*
 !packages/assets/.gitkeep
 assets/*
 !assets/porthole-logo.png
+packages/porthole/README.md
+packages/porthole/LICENSE

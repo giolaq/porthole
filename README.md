@@ -1,7 +1,7 @@
 # Porthole
 
 <p align="center">
-  <img src="assets/porthole-logo.png" alt="Porthole logo" width="220">
+  <img src="https://raw.githubusercontent.com/giolaq/porthole/main/assets/porthole-logo.png" alt="Porthole logo" width="220">
 </p>
 
 <p align="center">

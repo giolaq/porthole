@@ -19,3 +19,8 @@ await cp(
   resolve(packageRoot, "client-dist"),
   { recursive: true },
 );
+
+// npm reads README/LICENSE from the package directory, not the repo root —
+// without these copies the npm page shows "This package does not have a README".
+await cp(resolve(workspaceRoot, "README.md"), resolve(packageRoot, "README.md"));
+await cp(resolve(workspaceRoot, "LICENSE"), resolve(packageRoot, "LICENSE"));
