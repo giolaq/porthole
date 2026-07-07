@@ -29,6 +29,29 @@ npx portholejs
 
 With no running emulator, Porthole prompts for an AVD. To boot a specific AVD:
 
+### The scrcpy-server component
+
+Porthole mirrors and controls the emulator by speaking the
+[scrcpy](https://github.com/Genymobile/scrcpy) protocol. At runtime it pushes a
+small server jar (`scrcpy-server`, Apache-2.0, by Genymobile) to the emulator
+over adb and connects to its video and control sockets — no scrcpy CLI or
+native binary is involved.
+
+The jar is **not** bundled in this repository or in the npm package. It is
+downloaded automatically during `npm install` (a `postinstall` step) from the
+official Genymobile/scrcpy GitHub release, pinned to **v3.1** and verified
+against a SHA-256 checksum. If the download was skipped (for example, an
+offline install), fetch it later with:
+
+```sh
+node node_modules/portholejs/scripts/download-scrcpy-server.mjs
+```
+
+`porthole doctor` reports whether the jar is present. To bump the pinned
+version, update `SCRCPY_VERSION` and `SCRCPY_SHA256` in
+`scripts/download-scrcpy-server.mjs` and keep the engine's scrcpy options class
+in sync (see `src/engine/scrcpy-engine.ts`).
+
 ```sh
 npx portholejs start Pixel_8_Pro_API_34
 ```
@@ -125,11 +148,23 @@ and a TV D-pad remote. TV sessions reject touch input server-side.
 
 Video uses WebCodecs by default. Browsers without `VideoDecoder` automatically
 fall back to `/stream.mjpeg`, and `--mjpeg` or `?video=mjpeg` forces that mode.
-MJPEG is implemented with shared `adb screencap` polling at roughly 3 fps; it is
-a compatibility fallback, not a high-frame-rate stream.
+MJPEG is implemented with shared `adb screencap` polling at roughly 3 fps,
+re-encoded server-side to downscaled JPEG (pure JS, max 800 px) to keep
+per-frame payloads small; it is a compatibility fallback, not a
+high-frame-rate stream.
 
 When serving on a LAN with `--host 0.0.0.0`, Porthole prints a tokenized URL.
 Non-local requests must present that token.
+
+Two capability notes:
+
+- `porthole emu` / `POST /api/emu` is a raw passthrough to the emulator
+  console (`adb emu`) — including commands like `kill`. Treat it as
+  operator-level access; anyone who can reach the (token-protected) API can
+  use it.
+- `porthole focused` / `get_focused` reads D-pad focus, which is a TV/leanback
+  concept. On phone profiles it usually returns `null` unless a view holds
+  keyboard focus — that is expected, not an error.
 
 ## Troubleshooting
 

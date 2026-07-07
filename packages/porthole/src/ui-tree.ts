@@ -26,6 +26,10 @@ export interface UiNode {
 
 export interface UiMatch extends UiNode {
   center: { x: number; y: number };
+  // Normalized against the UI dump's own display bounds — NOT the scrcpy
+  // stream metadata, which is scaled down by --max-size and lives in a
+  // different coordinate space.
+  normalizedCenter: { x: number; y: number } | null;
 }
 
 export async function dumpUi(serial: string, filter?: string): Promise<UiNode[]> {
@@ -42,7 +46,13 @@ export async function findElement(
   serial: string,
   query: { text?: string; resourceId?: string },
 ): Promise<UiMatch | null> {
-  const tree = parseUiAutomatorXml(await dumpUiXml(serial));
+  return findInTree(parseUiAutomatorXml(await dumpUiXml(serial)), query);
+}
+
+export function findInTree(
+  tree: UiNode[],
+  query: { text?: string; resourceId?: string },
+): UiMatch | null {
   const node = flatten(tree).find((candidate) => {
     if (query.text && !candidate.text.includes(query.text)) return false;
     if (query.resourceId && !candidate.resourceId.includes(query.resourceId)) {
@@ -50,7 +60,17 @@ export async function findElement(
     }
     return true;
   });
-  return node ? withCenter(node) : null;
+  return node ? withCenter(node, displaySize(tree)) : null;
+}
+
+export function displaySize(tree: UiNode[]): { width: number; height: number } {
+  let width = 0;
+  let height = 0;
+  for (const node of flatten(tree)) {
+    if (node.bounds.r > width) width = node.bounds.r;
+    if (node.bounds.b > height) height = node.bounds.b;
+  }
+  return { width, height };
 }
 
 export async function waitForUiText(
@@ -131,14 +151,16 @@ function flatten(nodes: UiNode[]): UiNode[] {
   return nodes.flatMap((node) => [node, ...flatten(node.children)]);
 }
 
-function withCenter(node: UiNode): UiMatch {
-  return {
-    ...node,
-    center: {
-      x: (node.bounds.l + node.bounds.r) / 2,
-      y: (node.bounds.t + node.bounds.b) / 2,
-    },
+function withCenter(node: UiNode, display: { width: number; height: number }): UiMatch {
+  const center = {
+    x: (node.bounds.l + node.bounds.r) / 2,
+    y: (node.bounds.t + node.bounds.b) / 2,
   };
+  const normalizedCenter =
+    display.width > 0 && display.height > 0
+      ? { x: center.x / display.width, y: center.y / display.height }
+      : null;
+  return { ...node, center, normalizedCenter };
 }
 
 async function dumpUiXml(serial: string): Promise<string> {

@@ -29,6 +29,7 @@ import {
 import { readState } from "./state.js";
 import { runCliAction } from "./cli-errors.js";
 import { runDoctor } from "./doctor.js";
+import { ensurePortFree } from "./port-check.js";
 
 const program = new Command();
 
@@ -132,6 +133,15 @@ program
         quiet?: boolean;
       },
     ) => {
+      // Check the port before prompting, booting, or detaching — a busy port
+      // otherwise surfaces as a boot wasted on a doomed session or as an
+      // opaque detach timeout.
+      const portError = await ensurePortFree(parseInt(opts.port, 10), opts.host);
+      if (portError) {
+        console.error(portError);
+        process.exit(1);
+      }
+
       if (opts.detach && process.env["PORTHOLE_DETACHED_CHILD"] !== "1") {
         await startDetached(avd, opts);
         return;
@@ -220,6 +230,9 @@ program
           );
         } else {
           console.error(`Failed to start: ${message}`);
+        }
+        if (bootedByUs && !opts.keepAlive && target.serial) {
+          await shutdownDevice(sdk, target.serial);
         }
         process.exit(1);
       }

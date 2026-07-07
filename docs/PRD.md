@@ -123,7 +123,7 @@ D-pad remote, which no lightweight tool offers.
 | Language / runtime | TypeScript, Node ≥ 20. No Bun-specific APIs.                                                                                                                                                                                                                                                                                       |
 | ADB + scrcpy       | A TypeScript ADB/scrcpy stack — recommended: the `@yume-chan/*` ("Tango" / ya-webadb) packages (`@yume-chan/adb`, `@yume-chan/scrcpy`, `@yume-chan/adb-scrcpy`, a Node adb-server connector, and `@yume-chan/scrcpy-decoder-webcodecs` for the client). **Verify current package names, versions, and APIs on npm before coding.** |
 | ADB transport      | Connect to the local `adb` server over TCP (port 5037). Do not reimplement the host protocol.                                                                                                                                                                                                                                      |
-| scrcpy server      | Bundle one **pinned** `scrcpy-server` jar (from a specific Genymobile/scrcpy release) under `assets/`. Push it to the device at runtime.                                                                                                                                                                                           |
+| scrcpy server      | Download one **pinned** `scrcpy-server` jar from the official Genymobile/scrcpy GitHub release at install time (postinstall, SHA-256 verified); do not commit it to the repo or ship it in the npm tarball. Push it to the device at runtime.                                                                                      |
 | Video codec        | H.264 (widest WebCodecs support).                                                                                                                                                                                                                                                                                                  |
 | HTTP / WS server   | Node `http` + `ws`.                                                                                                                                                                                                                                                                                                                |
 | Web client         | React + Vite. WebCodecs `VideoDecoder` → `<canvas>` renderer.                                                                                                                                                                                                                                                                      |
@@ -134,8 +134,8 @@ D-pad remote, which no lightweight tool offers.
 
 **Distribution:** plain npm package, run via `npx`. npm name `portholejs`
 (bare `porthole` is taken by an abandoned 2015 package); the `bin` command is
-`porthole`. No compile step; ship JS + the scrcpy-server asset + the built
-client.
+`porthole`. No compile step; ship JS + the built client; the scrcpy-server
+jar is fetched from the pinned upstream release during install.
 
 ---
 
@@ -145,8 +145,6 @@ client.
 porthole/
   package.json                 npm workspaces root
   CLAUDE.md                    agent guidance (conventions, gotchas)
-  assets/
-    scrcpy-server              pinned scrcpy server jar
   packages/
     porthole/                  CLI + server + engine + MCP
       src/

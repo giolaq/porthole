@@ -334,18 +334,26 @@ export async function startMcpServer(): Promise<void> {
         };
       }
       const node = await findElement(activeSerial, { text, resourceId });
-      if (node && tap && engine?.metadata) {
+      if (node && tap && engine) {
+        if (!node.normalizedCenter) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Found the element but could not determine display size to tap it.",
+              },
+            ],
+          };
+        }
         await engine.sendInput({
           kind: "touch",
           phase: "down",
-          x: node.center.x / engine.metadata.width,
-          y: node.center.y / engine.metadata.height,
+          ...node.normalizedCenter,
         });
         await engine.sendInput({
           kind: "touch",
           phase: "up",
-          x: node.center.x / engine.metadata.width,
-          y: node.center.y / engine.metadata.height,
+          ...node.normalizedCenter,
         });
       }
       return { content: [{ type: "text", text: JSON.stringify(node, null, 2) }] };

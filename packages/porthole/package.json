@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "tsc && node scripts/copy-package-assets.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/download-scrcpy-server.mjs"
   },
   "keywords": [
     "android",
@@ -22,7 +23,7 @@
   "files": [
     "dist/",
     "!dist/__tests__/",
-    "assets/scrcpy-server",
+    "scripts/download-scrcpy-server.mjs",
     "client-dist/"
   ],
   "engines": {
@@ -36,10 +37,13 @@
     "@yume-chan/scrcpy": "^2.3.0",
     "@yume-chan/stream-extra": "^2.5.3",
     "commander": "^14.0.3",
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1"
   }
 }

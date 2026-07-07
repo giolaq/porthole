@@ -8,6 +8,7 @@ import {
   listRunningDevices,
 } from "./device-manager.js";
 import { readState, removeSession, statePath } from "./state.js";
+import { SCRCPY_DOWNLOAD_SCRIPT, scrcpyServerCandidatePath } from "./paths.js";
 
 export interface DoctorCheck {
   name: string;
@@ -82,6 +83,14 @@ export async function runDoctor(): Promise<DoctorCheck[]> {
       fix: "Create an Android Virtual Device in Android Studio.",
     });
   }
+
+  checks.push(
+    await fileCheck(
+      "scrcpy-server",
+      scrcpyServerCandidatePath(),
+      `Download it from the Genymobile/scrcpy release: node ${SCRCPY_DOWNLOAD_SCRIPT}`,
+    ),
+  );
 
   checks.push({
     name: "port-3200",

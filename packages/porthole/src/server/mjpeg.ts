@@ -1,5 +1,6 @@
 import type { ServerResponse } from "node:http";
 import type { Engine } from "../engine/types.js";
+import { pngToScaledJpeg } from "./frame-convert.js";
 
 export const MJPEG_BOUNDARY = "porthole-frame";
 
@@ -62,7 +63,7 @@ export class MjpegPoller {
       const engine = this.getEngine();
       const frame = await (engine?.captureFrame?.() ?? fallbackFrame(engine));
       if (frame) {
-        const part = multipartPart(frame);
+        const part = multipartPart(compressFrame(frame));
         for (const client of this.clients) {
           client.write(part);
         }
@@ -83,4 +84,17 @@ async function fallbackFrame(
 ): Promise<{ data: Uint8Array; mime: string } | null> {
   if (!engine) return null;
   return { data: await engine.screenshot(), mime: "image/png" };
+}
+
+function compressFrame(frame: { data: Uint8Array; mime: string }): {
+  data: Uint8Array;
+  mime: string;
+} {
+  if (frame.mime !== "image/png") return frame;
+  try {
+    return pngToScaledJpeg(frame.data);
+  } catch {
+    // A malformed capture is better delivered raw than dropped.
+    return frame;
+  }
 }

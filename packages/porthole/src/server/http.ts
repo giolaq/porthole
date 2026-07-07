@@ -215,20 +215,19 @@ export function createHttpServer(opts: HttpServerOptions) {
         }
         const node = await findElement(serial, { text, resourceId });
         if (node && body.tap === true && device.profile === "phone") {
+          if (!node.normalizedCenter) {
+            throw new Error("Could not determine display size from the UI dump.");
+          }
           const engine = getEngine();
-          const width = engine?.metadata?.width ?? 1;
-          const height = engine?.metadata?.height ?? 1;
           await engine?.sendInput({
             kind: "touch",
             phase: "down",
-            x: node.center.x / width,
-            y: node.center.y / height,
+            ...node.normalizedCenter,
           });
           await engine?.sendInput({
             kind: "touch",
             phase: "up",
-            x: node.center.x / width,
-            y: node.center.y / height,
+            ...node.normalizedCenter,
           });
         }
         await sendJson(res, 200, { ok: true, node });
@@ -576,12 +575,9 @@ function isAuthorized(
 }
 
 function isLocalAddress(address: string | undefined): boolean {
-  return (
-    !address ||
-    address === "127.0.0.1" ||
-    address === "::1" ||
-    address === "::ffff:127.0.0.1"
-  );
+  // Fail closed: no discernible peer address means no token bypass.
+  if (!address) return false;
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
 function parseCookie(cookie: string): Map<string, string> {

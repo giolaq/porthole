@@ -20,16 +20,20 @@ Full requirements and milestones live in `docs/PRD.md`. This file covers convent
 ```
 porthole/
   package.json              npm workspaces root
-  assets/
-    scrcpy-server           pinned scrcpy-server jar
   packages/
     porthole/               CLI + server + engine + MCP (src/)
+      assets/scrcpy-server  downloaded at install (gitignored, sha256-pinned)
+      scripts/download-scrcpy-server.mjs   pin + checksum live here
     porthole-client/        React preview UI (src/)
   docs/
     PRD.md                  source of truth for requirements & milestones
   skill/
     SKILL.md                optional agent skill
 ```
+
+The `scrcpy-server` jar is NOT committed. It is fetched from the pinned
+Genymobile/scrcpy GitHub release by a `postinstall` script and verified by
+SHA-256. Bump version + checksum together in `download-scrcpy-server.mjs`.
 
 ## Build & test commands
 
