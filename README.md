@@ -4,6 +4,13 @@
   <img src="assets/porthole-logo.png" alt="Porthole logo" width="220">
 </p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/portholejs"><img src="https://img.shields.io/npm/v/portholejs" alt="npm version"></a>
+  <a href="https://github.com/giolaq/porthole/actions/workflows/ci.yml"><img src="https://github.com/giolaq/porthole/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/giolaq/porthole/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/portholejs" alt="license"></a>
+  <a href="https://www.npmjs.com/package/portholejs"><img src="https://img.shields.io/node/v/portholejs" alt="node"></a>
+</p>
+
 A window into your Android emulator — `npx portholejs`.
 
 Porthole boots or attaches to Android phone and TV AVDs, streams them to a browser,
