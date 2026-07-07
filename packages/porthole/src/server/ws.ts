@@ -3,6 +3,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { Engine, VideoChunk } from "../engine/types.js";
 import { assertInputAllowed, parseInputEvent } from "../input-validation.js";
 import type { DeviceInfo } from "../device-manager.js";
+import { encodeVideoPacket } from "../protocol.js";
+import { debugLog } from "../log.js";
 
 export interface WsServerOptions {
   httpServer: Server;
@@ -20,23 +22,16 @@ export function createWsServer(opts: WsServerOptions) {
   let lastConfig: Buffer | null = null;
   let lastKeyframe: Buffer | null = null;
 
-  function makePacket(chunk: VideoChunk): Buffer {
-    const header = Buffer.alloc(5);
-    header.writeUInt8(chunk.type === "config" ? 0 : 1, 0);
-    header.writeUInt32BE(chunk.data.byteLength, 1);
-    return Buffer.concat([header, Buffer.from(chunk.data)]);
-  }
-
   function attachEngine(engine: Engine): void {
     currentEngine = engine;
     engine.onVideoChunk((chunk: VideoChunk) => {
-      const packet = makePacket(chunk);
+      const packet = Buffer.from(encodeVideoPacket(chunk));
 
       if (chunk.type === "config") {
         lastConfig = packet;
       } else {
         // Cache keyframes for new clients
-        const isKey = hasIdrNal(chunk.data);
+        const isKey = chunk.keyframe ?? hasIdrNal(chunk.data);
         if (isKey) {
           lastKeyframe = packet;
         }
@@ -51,6 +46,7 @@ export function createWsServer(opts: WsServerOptions) {
   }
 
   wss.on("connection", (ws, req) => {
+    debugLog("ws", "client connected");
     if (!isAuthorized(req, token)) {
       ws.close(1008, "Porthole token required.");
       return;
@@ -69,6 +65,7 @@ export function createWsServer(opts: WsServerOptions) {
         if (device) assertInputAllowed(device.profile, event);
         void engine.sendInput(event);
       } catch {
+        debugLog("ws", "ignored invalid input message");
         // Invalid message, ignore
       }
     });

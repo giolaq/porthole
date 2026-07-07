@@ -21,13 +21,21 @@ import { resolveTarget } from "./target-resolution.js";
 import {
   defaultScreenshotPath,
   fetchSessionScreenshot,
+  getSessionJson,
   postSessionJson,
   sendSessionInput,
   writeScreenshot,
 } from "./control-client.js";
 import { readState } from "./state.js";
+import { runCliAction } from "./cli-errors.js";
+import { runDoctor } from "./doctor.js";
 
 const program = new Command();
+
+if (Number(process.versions.node.split(".")[0] ?? "0") < 20) {
+  console.error("porthole: Node.js 20 or newer is required.");
+  process.exit(1);
+}
 
 program.name("porthole").description("Android emulator preview").version(VERSION);
 
@@ -66,6 +74,26 @@ program
   });
 
 program
+  .command("doctor")
+  .description("Check local Porthole and Android emulator prerequisites")
+  .option("-q, --quiet", "JSON output")
+  .action((opts: { quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const checks = await runDoctor();
+      if (opts.quiet) {
+        process.stdout.write(JSON.stringify({ checks }) + "\n");
+        return;
+      }
+      for (const check of checks) {
+        const mark = check.ok ? "OK" : "FAIL";
+        console.log(`${mark} ${check.name}: ${check.detail}`);
+        if (!check.ok && check.fix) console.log(`  fix: ${check.fix}`);
+      }
+      if (checks.some((check) => !check.ok)) process.exit(1);
+    });
+  });
+
+program
   .command("start [avd]", { isDefault: true })
   .description("Boot/attach emulator and serve preview")
   .option("-p, --port <port>", "HTTP port", "3200")
@@ -74,6 +102,14 @@ program
   .option("--no-preview", "Don't open browser")
   .option("--mjpeg", "MJPEG mode")
   .option("--detach", "Run the preview server in the background")
+  .option("--keep-alive", "Leave a Porthole-booted emulator running on exit")
+  .option("--wipe-data", "Wipe emulator data before boot")
+  .option("--no-snapshot", "Disable loading/saving emulator snapshots")
+  .option("--cold-boot", "Alias for --no-snapshot")
+  .option("--gpu <mode>", "Pass emulator GPU mode")
+  .option("--max-size <px>", "Maximum stream dimension", "1280")
+  .option("--max-fps <fps>", "Maximum stream FPS", "30")
+  .option("--bitrate <bps>", "Stream bitrate in bits per second")
   .option("-q, --quiet", "Quiet/JSON mode")
   .action(
     async (
@@ -85,6 +121,14 @@ program
         preview: boolean;
         mjpeg?: boolean;
         detach?: boolean;
+        keepAlive?: boolean;
+        wipeData?: boolean;
+        snapshot?: boolean;
+        coldBoot?: boolean;
+        gpu?: string;
+        maxSize: string;
+        maxFps: string;
+        bitrate?: string;
         quiet?: boolean;
       },
     ) => {
@@ -111,7 +155,11 @@ program
 
       if (resolution.action === "boot") {
         if (!opts.quiet) console.log(`Booting ${resolution.avdName}...`);
-        const serial = await bootDevice({ sdk, avdName: resolution.avdName });
+        const serial = await bootDevice({
+          sdk,
+          avdName: resolution.avdName,
+          emulatorArgs: emulatorArgs(opts),
+        });
         devices = await listDevices();
         target = devices.find((d) => d.serial === serial);
         bootedByUs = true;
@@ -142,8 +190,12 @@ program
         device: target,
         port: parseInt(opts.port, 10),
         host: opts.host,
+        maxSize: Number(opts.maxSize),
+        maxFps: Number(opts.maxFps),
+        bitrate: opts.bitrate ? Number(opts.bitrate) : undefined,
         bootedByUs,
         detached: process.env["PORTHOLE_DETACHED_CHILD"] === "1",
+        forceMjpeg: opts.mjpeg ?? false,
       });
 
       try {
@@ -153,11 +205,7 @@ program
             `Attached to ${target.name} [${target.profile}] (${target.serial})`,
           );
           console.log(`Preview: ${url}`);
-          if (opts.mjpeg) {
-            console.log(
-              "MJPEG fallback is not available in this build; using WebCodecs.",
-            );
-          }
+          if (opts.mjpeg) console.log("Video mode: MJPEG screenshot polling");
         } else {
           process.stdout.write(JSON.stringify({ device: target, url }) + "\n");
         }
@@ -176,10 +224,15 @@ program
         process.exit(1);
       }
 
-      process.on("SIGINT", async () => {
+      const stopForSignal = async () => {
         await session.stop();
+        if (bootedByUs && !opts.keepAlive && target.serial) {
+          await shutdownDevice(sdk, target.serial);
+        }
         process.exit(0);
-      });
+      };
+      process.on("SIGINT", () => void stopForSignal());
+      process.on("SIGTERM", () => void stopForSignal());
     },
   );
 
@@ -241,22 +294,23 @@ program
   .description("Touch at normalized 0..1 coordinates")
   .option("-p, --port <port>", "Session port")
   .option("-q, --quiet", "JSON output")
-  .action(async (x: string, y: string, opts: { port?: string; quiet?: boolean }) => {
-    const nx = parseFloat(x);
-    const ny = parseFloat(y);
-    if (isNaN(nx) || isNaN(ny) || nx < 0 || nx > 1 || ny < 0 || ny > 1) {
-      console.error("Coordinates must be numbers in 0..1");
-      process.exit(1);
-    }
-    await sendSessionInput(
-      { kind: "touch", phase: "down", x: nx, y: ny },
-      { port: parseOptionalPort(opts.port) },
-    );
-    const session = await sendSessionInput(
-      { kind: "touch", phase: "up", x: nx, y: ny },
-      { port: parseOptionalPort(opts.port) },
-    );
-    printResult(opts.quiet, { ok: true, session, event: "tap" }, `Tapped ${nx},${ny}`);
+  .action((x: string, y: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const nx = parseFloat(x);
+      const ny = parseFloat(y);
+      if (isNaN(nx) || isNaN(ny) || nx < 0 || nx > 1 || ny < 0 || ny > 1) {
+        throw new Error("Coordinates must be numbers in 0..1");
+      }
+      await sendSessionInput(
+        { kind: "touch", phase: "down", x: nx, y: ny },
+        { port: parseOptionalPort(opts.port) },
+      );
+      const session = await sendSessionInput(
+        { kind: "touch", phase: "up", x: nx, y: ny },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, session, event: "tap" }, `Tapped ${nx},${ny}`);
+    });
   });
 
 program
@@ -264,21 +318,22 @@ program
   .description("Send a single Android keyevent")
   .option("-p, --port <port>", "Session port")
   .option("-q, --quiet", "JSON output")
-  .action(async (keycode: string, opts: { port?: string; quiet?: boolean }) => {
-    const code = parseInt(keycode, 10);
-    if (isNaN(code)) {
-      console.error("Keycode must be a number");
-      process.exit(1);
-    }
-    await sendSessionInput(
-      { kind: "key", phase: "down", keycode: code },
-      { port: parseOptionalPort(opts.port) },
-    );
-    const session = await sendSessionInput(
-      { kind: "key", phase: "up", keycode: code },
-      { port: parseOptionalPort(opts.port) },
-    );
-    printResult(opts.quiet, { ok: true, session, keycode: code }, `Key ${code} sent`);
+  .action((keycode: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const code = parseInt(keycode, 10);
+      if (isNaN(code)) {
+        throw new Error("Keycode must be a number");
+      }
+      await sendSessionInput(
+        { kind: "key", phase: "down", keycode: code },
+        { port: parseOptionalPort(opts.port) },
+      );
+      const session = await sendSessionInput(
+        { kind: "key", phase: "up", keycode: code },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, session, keycode: code }, `Key ${code} sent`);
+    });
   });
 
 program
@@ -286,18 +341,19 @@ program
   .description("D-pad / media remote button")
   .option("-p, --port <port>", "Session port")
   .option("-q, --quiet", "JSON output")
-  .action(async (button: string, opts: { port?: string; quiet?: boolean }) => {
-    if (!(button in REMOTE_BUTTON_TO_KEYCODE)) {
-      console.error(
-        `Unknown button: ${button}. Valid: ${Object.keys(REMOTE_BUTTON_TO_KEYCODE).join(", ")}`,
+  .action((button: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      if (!(button in REMOTE_BUTTON_TO_KEYCODE)) {
+        throw new Error(
+          `Unknown button: ${button}. Valid: ${Object.keys(REMOTE_BUTTON_TO_KEYCODE).join(", ")}`,
+        );
+      }
+      const session = await sendSessionInput(
+        { kind: "remote", button: button as RemoteButton },
+        { port: parseOptionalPort(opts.port) },
       );
-      process.exit(1);
-    }
-    const session = await sendSessionInput(
-      { kind: "remote", button: button as RemoteButton },
-      { port: parseOptionalPort(opts.port) },
-    );
-    printResult(opts.quiet, { ok: true, session, button }, `Remote: ${button}`);
+      printResult(opts.quiet, { ok: true, session, button }, `Remote: ${button}`);
+    });
   });
 
 program
@@ -305,12 +361,14 @@ program
   .description("Type text")
   .option("-p, --port <port>", "Session port")
   .option("-q, --quiet", "JSON output")
-  .action(async (text: string, opts: { port?: string; quiet?: boolean }) => {
-    const session = await sendSessionInput(
-      { kind: "text", text },
-      { port: parseOptionalPort(opts.port) },
-    );
-    printResult(opts.quiet, { ok: true, session, text }, `Typed "${text}"`);
+  .action((text: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const session = await sendSessionInput(
+        { kind: "text", text },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, session, text }, `Typed "${text}"`);
+    });
   });
 
 program
@@ -319,13 +377,15 @@ program
   .option("-p, --port <port>", "Session port")
   .option("-o, --output <file>", "Output path")
   .option("-q, --quiet", "JSON output")
-  .action(async (opts: { port?: string; output?: string; quiet?: boolean }) => {
-    const { session, png } = await fetchSessionScreenshot({
-      port: parseOptionalPort(opts.port),
+  .action((opts: { port?: string; output?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const { session, png } = await fetchSessionScreenshot({
+        port: parseOptionalPort(opts.port),
+      });
+      const output = opts.output ?? defaultScreenshotPath(session.serial);
+      await writeScreenshot(output, png);
+      printResult(opts.quiet, { ok: true, path: output, session }, output);
     });
-    const output = opts.output ?? defaultScreenshotPath(session.serial);
-    await writeScreenshot(output, png);
-    printResult(opts.quiet, { ok: true, path: output, session }, output);
   });
 
 program
@@ -333,13 +393,15 @@ program
   .description("Rotate a phone session: portrait, landscape, left, or right")
   .option("-p, --port <port>", "Session port")
   .option("-q, --quiet", "JSON output")
-  .action(async (orientation: string, opts: { port?: string; quiet?: boolean }) => {
-    const result = await postSessionJson(
-      "/api/rotate",
-      { orientation },
-      { port: parseOptionalPort(opts.port) },
-    );
-    printResult(opts.quiet, { ok: true, ...result }, `Rotated ${orientation}`);
+  .action((orientation: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const result = await postSessionJson(
+        "/api/rotate",
+        { orientation },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, ...result }, `Rotated ${orientation}`);
+    });
   });
 
 program
@@ -347,13 +409,112 @@ program
   .description("Pass arguments to adb emu for the active session")
   .option("-p, --port <port>", "Session port")
   .option("-q, --quiet", "JSON output")
-  .action(async (args: string[], opts: { port?: string; quiet?: boolean }) => {
-    const result = await postSessionJson(
-      "/api/emu",
-      { args },
-      { port: parseOptionalPort(opts.port) },
-    );
-    printResult(opts.quiet, { ok: true, ...result }, "Emulator command sent");
+  .action((args: string[], opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const result = await postSessionJson(
+        "/api/emu",
+        { args },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, ...result }, "Emulator command sent");
+    });
+  });
+
+program
+  .command("focused")
+  .description("Print the currently focused UI node")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action((opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const result = await getSessionJson("/api/focused", {
+        port: parseOptionalPort(opts.port),
+      });
+      printResult(opts.quiet, result, JSON.stringify(result.response, null, 2));
+    });
+  });
+
+program
+  .command("dump-ui")
+  .description("Dump the Android accessibility hierarchy")
+  .option("-p, --port <port>", "Session port")
+  .option("--filter <text>", "Filter by text/resource id/content description")
+  .option("-q, --quiet", "JSON output")
+  .action((opts: { port?: string; filter?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const query = opts.filter
+        ? `?${new URLSearchParams({ filter: opts.filter }).toString()}`
+        : "";
+      const result = await getSessionJson(`/api/ui${query}`, {
+        port: parseOptionalPort(opts.port),
+      });
+      printResult(opts.quiet, result, JSON.stringify(result.response, null, 2));
+    });
+  });
+
+program
+  .command("wait-for <text>")
+  .description("Wait until text appears in the UI hierarchy")
+  .option("-p, --port <port>", "Session port")
+  .option("--timeout <ms>", "Timeout in milliseconds", "10000")
+  .option("-q, --quiet", "JSON output")
+  .action((text: string, opts: { port?: string; timeout: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const result = await postSessionJson(
+        "/api/wait_for",
+        { text, timeoutMs: Number(opts.timeout) },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, ...result }, `Found "${text}"`);
+    });
+  });
+
+program
+  .command("open-url <url>")
+  .description("Open an Android deep link or URL")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action((url: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const result = await postSessionJson(
+        "/api/open_url",
+        { url },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, ...result }, `Opened ${url}`);
+    });
+  });
+
+program
+  .command("stop-app <package>")
+  .description("Force-stop an app package")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action((packageName: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const result = await postSessionJson(
+        "/api/stop_app",
+        { packageName },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, ...result }, `Stopped ${packageName}`);
+    });
+  });
+
+program
+  .command("clear-app <package>")
+  .description("Clear an app package's data")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action((packageName: string, opts: { port?: string; quiet?: boolean }) => {
+    void runCliAction(opts, async () => {
+      const result = await postSessionJson(
+        "/api/clear_app",
+        { packageName },
+        { port: parseOptionalPort(opts.port) },
+      );
+      printResult(opts.quiet, { ok: true, ...result }, `Cleared ${packageName}`);
+    });
   });
 
 program
@@ -372,6 +533,14 @@ interface StartOptions {
   preview: boolean;
   mjpeg?: boolean;
   detach?: boolean;
+  keepAlive?: boolean;
+  wipeData?: boolean;
+  snapshot?: boolean;
+  coldBoot?: boolean;
+  gpu?: string;
+  maxSize: string;
+  maxFps: string;
+  bitrate?: string;
   quiet?: boolean;
 }
 
@@ -382,6 +551,12 @@ async function startDetached(avd: string | undefined, opts: StartOptions): Promi
   args.push("--port", opts.port, "--host", opts.host, "--no-preview");
   if (opts.device) args.push("--device", opts.device);
   if (opts.mjpeg) args.push("--mjpeg");
+  if (opts.keepAlive) args.push("--keep-alive");
+  if (opts.wipeData) args.push("--wipe-data");
+  if (opts.snapshot === false || opts.coldBoot) args.push("--no-snapshot");
+  if (opts.gpu) args.push("--gpu", opts.gpu);
+  args.push("--max-size", opts.maxSize, "--max-fps", opts.maxFps);
+  if (opts.bitrate) args.push("--bitrate", opts.bitrate);
   if (opts.quiet) args.push("--quiet");
 
   const child = spawn(process.execPath, args, {
@@ -414,6 +589,18 @@ async function startDetached(avd: string | undefined, opts: StartOptions): Promi
     console.log(`Detached Porthole server pid=${session.pid}`);
     console.log(`Preview: ${session.url}`);
   }
+}
+
+function emulatorArgs(opts: StartOptions): string[] {
+  const args: string[] = [];
+  if (opts.wipeData) args.push("-wipe-data");
+  if (opts.snapshot === false || opts.coldBoot) {
+    args.push("-no-snapshot-load", "-no-snapshot-save");
+  } else {
+    args.push("-no-snapshot-load");
+  }
+  if (opts.gpu) args.push("-gpu", opts.gpu);
+  return args;
 }
 
 async function promptForAvd(

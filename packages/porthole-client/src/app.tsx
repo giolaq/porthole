@@ -3,13 +3,16 @@ import { VideoCanvas, type VideoStats } from "./video-canvas.js";
 import { TouchOverlay } from "./touch-overlay.js";
 import { TvRemote } from "./tv-remote.js";
 import { DevicePicker } from "./device-picker.js";
+import { MjpegView } from "./mjpeg-view.js";
 
 interface HealthResponse {
-  status: string;
+  status: "waiting" | "ok" | "reconnecting" | "dead";
   codec?: string;
   width?: number;
   height?: number;
   device?: Device;
+  preferredVideoMode?: "webcodecs" | "mjpeg";
+  videoModes?: Array<"webcodecs" | "mjpeg">;
 }
 
 interface Device {
@@ -32,6 +35,7 @@ export function App() {
   const [showStats, setShowStats] = useState(true);
   const [keyboardCaptured, setKeyboardCaptured] = useState(false);
   const [toast, setToast] = useState("");
+  const [videoMode, setVideoMode] = useState<"webcodecs" | "mjpeg">("webcodecs");
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -42,6 +46,7 @@ export function App() {
         setHealth(data);
         if (data.status === "ok") {
           setProfile(data.device?.profile ?? inferProfile(data.width, data.height));
+          setVideoMode(selectVideoMode(data.preferredVideoMode));
         }
       } catch {
         setHealth(null);
@@ -233,7 +238,7 @@ export function App() {
           {connected ? "Connected" : "Disconnected"}
         </span>
         <span style={{ fontSize: "12px", color: "#888", marginLeft: "auto" }}>
-          [{profile}] {width}x{height}
+          [{profile}] {width}x{height} {videoMode}
         </span>
         {showStats && stats && (
           <span style={{ fontSize: "12px", color: "#aaa" }}>
@@ -285,7 +290,11 @@ export function App() {
             overflow: "hidden",
           }}
         >
-          <VideoCanvas ws={ws} width={width} height={height} onStats={setStats} />
+          {videoMode === "mjpeg" ? (
+            <MjpegView width={width} height={height} />
+          ) : (
+            <VideoCanvas ws={ws} width={width} height={height} onStats={setStats} />
+          )}
           {profile === "phone" && <TouchOverlay ws={ws} />}
           {keyboardCaptured && (
             <div
@@ -301,6 +310,22 @@ export function App() {
               }}
             >
               keyboard captured
+            </div>
+          )}
+          {health?.status && health.status !== "ok" && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(0,0,0,0.55)",
+                color: "#fff",
+                fontSize: "18px",
+              }}
+            >
+              {health.status === "reconnecting" ? "Reconnecting..." : health.status}
             </div>
           )}
         </div>
@@ -376,6 +401,16 @@ export function App() {
       )}
     </div>
   );
+}
+
+function selectVideoMode(
+  preferred: "webcodecs" | "mjpeg" | undefined,
+): "webcodecs" | "mjpeg" {
+  const requested = new URLSearchParams(window.location.search).get("video");
+  if (requested === "mjpeg") return "mjpeg";
+  if (requested === "webcodecs") return "webcodecs";
+  if (preferred === "mjpeg") return "mjpeg";
+  return "VideoDecoder" in window ? "webcodecs" : "mjpeg";
 }
 
 const headerButtonStyle: CSSProperties = {

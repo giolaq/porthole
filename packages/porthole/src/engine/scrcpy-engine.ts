@@ -18,6 +18,7 @@ import type {
 } from "@yume-chan/stream-extra";
 import type { InputEvent } from "../input.js";
 import { REMOTE_BUTTON_TO_KEYCODE } from "../keycodes.js";
+import { debugLog } from "../log.js";
 import type { Engine, EngineMetadata, VideoChunk } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -26,6 +27,7 @@ export interface ScrcpyEngineOptions {
   serial: string;
   maxSize?: number;
   maxFps?: number;
+  bitrate?: number;
   serverPath?: string;
 }
 
@@ -33,8 +35,10 @@ export class ScrcpyEngine implements Engine {
   private readonly serial: string;
   private readonly maxSize: number;
   private readonly maxFps: number;
+  private readonly bitrate?: number;
   private readonly serverPath: string;
   private videoCallbacks: Array<(chunk: VideoChunk) => void> = [];
+  private closeCallbacks: Array<(error?: Error) => void> = [];
   private client: AdbScrcpyClient<AdbScrcpyOptions3_1<true>> | null = null;
   private controller: ScrcpyControlMessageWriter | null = null;
   private adb: Adb | null = null;
@@ -49,11 +53,13 @@ export class ScrcpyEngine implements Engine {
     this.serial = opts.serial;
     this.maxSize = opts.maxSize ?? 1280;
     this.maxFps = opts.maxFps ?? 30;
+    this.bitrate = opts.bitrate;
     this.serverPath =
       opts.serverPath ?? join(import.meta.dirname, "../../assets/scrcpy-server");
   }
 
   async start(): Promise<void> {
+    debugLog("engine", `starting scrcpy for ${this.serial}`);
     const connector = new AdbServerNodeTcpConnector({ port: 5037 });
     const serverClient = new AdbServerClient(connector);
     this.adb = await serverClient.createAdb({ serial: this.serial });
@@ -73,6 +79,7 @@ export class ScrcpyEngine implements Engine {
       control: true,
       maxSize: this.maxSize,
       maxFps: this.maxFps,
+      videoBitRate: this.bitrate,
       videoCodec: "h264",
       tunnelForward: false,
       sendFrameMeta: true,
@@ -122,6 +129,7 @@ export class ScrcpyEngine implements Engine {
             data: value.data,
             timestamp:
               value.type === "data" && value.pts != null ? Number(value.pts) : undefined,
+            keyframe: value.type === "data" ? hasIdrNal(value.data) : undefined,
           };
 
           if (chunk.type === "frame") {
@@ -133,7 +141,9 @@ export class ScrcpyEngine implements Engine {
           }
         }
       } catch {
-        // Stream closed
+        this.emitClose(new Error("scrcpy video stream closed"));
+      } finally {
+        this.emitClose();
       }
     };
     void read();
@@ -141,6 +151,10 @@ export class ScrcpyEngine implements Engine {
 
   onVideoChunk(cb: (chunk: VideoChunk) => void): void {
     this.videoCallbacks.push(cb);
+  }
+
+  onClose(cb: (error?: Error) => void): void {
+    this.closeCallbacks.push(cb);
   }
 
   async sendInput(event: InputEvent): Promise<void> {
@@ -210,7 +224,12 @@ export class ScrcpyEngine implements Engine {
     return new Uint8Array(stdout);
   }
 
+  async captureFrame(): Promise<{ data: Uint8Array; mime: string }> {
+    return { data: await this.screenshot(), mime: "image/png" };
+  }
+
   async stop(): Promise<void> {
+    debugLog("engine", `stopping scrcpy for ${this.serial}`);
     if (this.client) {
       await this.client.close();
       this.client = null;
@@ -220,5 +239,26 @@ export class ScrcpyEngine implements Engine {
     this._metadata = null;
     this.lastFrame = null;
     this.videoCallbacks = [];
+    this.closeCallbacks = [];
   }
+
+  private emitClose(error?: Error): void {
+    const callbacks = [...this.closeCallbacks];
+    this.closeCallbacks = [];
+    for (const cb of callbacks) cb(error);
+  }
+}
+
+function hasIdrNal(data: Uint8Array): boolean {
+  for (let i = 0; i < data.length - 4; i++) {
+    if (data[i] === 0 && data[i + 1] === 0) {
+      let offset = i + 2;
+      if (data[offset] === 0) offset++;
+      if (data[offset] === 1) {
+        const nalByte = data[offset + 1];
+        if (nalByte !== undefined && (nalByte & 0x1f) === 5) return true;
+      }
+    }
+  }
+  return false;
 }

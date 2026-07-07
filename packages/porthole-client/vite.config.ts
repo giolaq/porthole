@@ -3,6 +3,15 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      "/ws": { target: "ws://127.0.0.1:3200", ws: true },
+      "/health": "http://127.0.0.1:3200",
+      "/screenshot": "http://127.0.0.1:3200",
+      "/stream.mjpeg": "http://127.0.0.1:3200",
+      "/api": "http://127.0.0.1:3200",
+    },
+  },
   build: {
     outDir: "dist",
   },

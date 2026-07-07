@@ -7,6 +7,9 @@ import { ScrcpyEngine } from "../engine/scrcpy-engine.js";
 import type { Engine } from "../engine/types.js";
 import type { InputEvent } from "../input.js";
 import { scrcpyServerPath } from "../paths.js";
+import { openUrl, stopApp, clearApp } from "../adb-actions.js";
+import { parseCrashes } from "../crashes.js";
+import { dumpUi, findElement, getFocusedNode, waitForUiText } from "../ui-tree.js";
 
 let engine: Engine | null = null;
 let activeSerial: string | null = null;
@@ -223,17 +226,12 @@ export async function startMcpServer(): Promise<void> {
         };
       }
       const png = await engine.screenshot();
-      const sharp = (await import("sharp")).default;
-      const jpeg = await sharp(png)
-        .resize({ width: 1280, withoutEnlargement: true })
-        .jpeg({ quality: 70 })
-        .toBuffer();
       return {
         content: [
           {
             type: "image",
-            data: jpeg.toString("base64"),
-            mimeType: "image/jpeg",
+            data: Buffer.from(png).toString("base64"),
+            mimeType: "image/png",
           },
         ],
       };
@@ -274,6 +272,159 @@ export async function startMcpServer(): Promise<void> {
   );
 
   server.tool(
+    "dump_ui",
+    "Dump the Android UI hierarchy as JSON",
+    { filter: z.string().optional().describe("Substring filter") },
+    async ({ filter }) => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(await dumpUi(activeSerial, filter), null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "get_focused",
+    "Return the focused UI node, useful for Android TV focus testing",
+    {},
+    async () => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(await getFocusedNode(activeSerial), null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "find_element",
+    "Find a UI element by text or resource id and optionally tap it on phone profiles",
+    {
+      text: z.string().optional(),
+      resourceId: z.string().optional(),
+      tap: z.boolean().optional(),
+    },
+    async ({ text, resourceId, tap }) => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      const node = await findElement(activeSerial, { text, resourceId });
+      if (node && tap && engine?.metadata) {
+        await engine.sendInput({
+          kind: "touch",
+          phase: "down",
+          x: node.center.x / engine.metadata.width,
+          y: node.center.y / engine.metadata.height,
+        });
+        await engine.sendInput({
+          kind: "touch",
+          phase: "up",
+          x: node.center.x / engine.metadata.width,
+          y: node.center.y / engine.metadata.height,
+        });
+      }
+      return { content: [{ type: "text", text: JSON.stringify(node, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    "wait_for",
+    "Wait for text to appear in the UI hierarchy",
+    {
+      text: z.string(),
+      timeoutMs: z.number().optional(),
+    },
+    async ({ text, timeoutMs }) => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      const node = await waitForUiText(activeSerial, text, timeoutMs ?? 10_000);
+      return { content: [{ type: "text", text: JSON.stringify(node, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    "open_url",
+    "Open a URL or Android deep link",
+    { url: z.string() },
+    async ({ url }) => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      return {
+        content: [{ type: "text", text: await openUrl(activeSerial, url) }],
+      };
+    },
+  );
+
+  server.tool(
+    "stop_app",
+    "Force-stop an app package",
+    { packageName: z.string() },
+    async ({ packageName }) => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      await stopApp(activeSerial, packageName);
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+    },
+  );
+
+  server.tool(
+    "clear_app",
+    "Clear app data for a package",
+    { packageName: z.string() },
+    async ({ packageName }) => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      await clearApp(activeSerial, packageName);
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+    },
+  );
+
+  server.tool(
     "read_logcat",
     "Read recent logcat output from the device",
     {
@@ -307,6 +458,28 @@ export async function startMcpServer(): Promise<void> {
       }
     },
   );
+
+  server.tool("get_crashes", "Return recent crash and ANR records", {}, async () => {
+    if (!activeSerial) {
+      return {
+        content: [{ type: "text", text: "No active session. Call attach_device first." }],
+      };
+    }
+    const { execFile: execFileCb } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileP = promisify(execFileCb);
+    const { stdout } = await execFileP(adbBin(findAndroidSdk()), [
+      "-s",
+      activeSerial,
+      "logcat",
+      "-d",
+      "-t",
+      "1000",
+    ]);
+    return {
+      content: [{ type: "text", text: JSON.stringify(parseCrashes(stdout), null, 2) }],
+    };
+  });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

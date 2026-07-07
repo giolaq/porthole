@@ -52,6 +52,21 @@ iOS, physical Android devices, or audio.
    porthole kill -q
    ```
 
+## Semantic UI
+
+Prefer semantic checks before screenshot interpretation when possible:
+
+```sh
+porthole focused -q
+porthole dump-ui --filter "Settings" -q
+porthole wait-for "Continue" --timeout 10000 -q
+porthole open-url "example://deep/link"
+```
+
+For TV AVDs, use `remote`, then `focused`, then assert the focused node's
+`text`, `resourceId`, or `contentDesc`. For phones, `find_element` is exposed
+through MCP and can tap the center of a matching node.
+
 ## MCP Loop
 
 When MCP is configured, use:
@@ -60,6 +75,8 @@ When MCP is configured, use:
 - `boot_device` and `wait_for_boot` for cold starts
 - `attach_device` before input and screenshots
 - `screenshot` after each meaningful input step
+- `dump_ui`, `get_focused`, and `wait_for` for semantic assertions
+- `get_crashes` after risky actions
 - `remote` for TV navigation
 - `tap` only for phone profiles
 - `read_logcat` to diagnose crashes or focus issues

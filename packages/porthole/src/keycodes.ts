@@ -12,6 +12,7 @@ export const AndroidKeycode = {
   KEYCODE_MEDIA_FAST_FORWARD: 90,
   KEYCODE_VOLUME_UP: 24,
   KEYCODE_VOLUME_DOWN: 25,
+  KEYCODE_WAKEUP: 224,
 } as const;
 
 export type RemoteButton =

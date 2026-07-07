@@ -54,21 +54,36 @@ npx portholejs kill -q
 | `porthole remote <button>`          | Press a TV D-pad/media button                       |
 | `porthole text "<string>"`          | Type text into the active session                   |
 | `porthole screenshot [-o file.png]` | Save a PNG screenshot                               |
+| `porthole focused`                  | Print the currently focused UI node                 |
+| `porthole dump-ui [--filter text]`  | Dump the Android UI hierarchy                       |
+| `porthole wait-for <text>`          | Wait until UI text appears                          |
+| `porthole open-url <url>`           | Open a URL or Android deep link                     |
+| `porthole stop-app <package>`       | Force-stop an app                                   |
+| `porthole clear-app <package>`      | Clear app data                                      |
 | `porthole rotate <orientation>`     | Rotate a phone emulator                             |
 | `porthole emu <args...>`            | Pass through to `adb emu`                           |
+| `porthole doctor`                   | Diagnose Node/SDK/adb/AVD/session problems          |
 | `porthole mcp`                      | Run the MCP server over stdio                       |
 
 Common options:
 
-| Option                  | Meaning                                              |
-| ----------------------- | ---------------------------------------------------- |
-| `-p, --port <port>`     | Preview/control port, default `3200`                 |
-| `-d, --device <serial>` | Attach to a running emulator serial                  |
-| `--host <host>`         | Bind address, default `127.0.0.1`                    |
-| `--no-preview`          | Do not open the browser automatically                |
-| `--detach`              | Start the preview server in the background           |
-| `--mjpeg`               | Reserved fallback flag; current builds use WebCodecs |
-| `-q, --quiet`           | Emit one JSON object/array on stdout                 |
+| Option                  | Meaning                                          |
+| ----------------------- | ------------------------------------------------ |
+| `-p, --port <port>`     | Preview/control port, default `3200`             |
+| `-d, --device <serial>` | Attach to a running emulator serial              |
+| `--host <host>`         | Bind address, default `127.0.0.1`                |
+| `--no-preview`          | Do not open the browser automatically            |
+| `--detach`              | Start the preview server in the background       |
+| `--mjpeg`               | Force MJPEG screenshot polling                   |
+| `-q, --quiet`           | Emit one JSON object/array on stdout             |
+| `--max-size <px>`       | Maximum scrcpy stream dimension                  |
+| `--max-fps <fps>`       | Maximum scrcpy FPS                               |
+| `--bitrate <bps>`       | Scrcpy video bitrate                             |
+| `--wipe-data`           | Wipe emulator data before boot                   |
+| `--no-snapshot`         | Disable loading/saving emulator snapshots        |
+| `--cold-boot`           | Alias for `--no-snapshot`                        |
+| `--gpu <mode>`          | Pass emulator GPU mode                           |
+| `--keep-alive`          | Leave a Porthole-booted emulator running on exit |
 
 Quiet schemas are intentionally simple: `list -q` returns
 `{ "devices": [...], "sessions": [...] }`; `start --detach -q` returns the
@@ -99,13 +114,19 @@ claude mcp add porthole -- npx portholejs mcp
 
 Useful MCP tools: `list_devices`, `boot_device`, `wait_for_boot`,
 `attach_device`, `tap`, `key`, `remote`, `type_text`, `screenshot`,
-`read_logcat`, and `install_apk`.
+`dump_ui`, `get_focused`, `find_element`, `wait_for`, `open_url`, `stop_app`,
+`clear_app`, `get_crashes`, `read_logcat`, and `install_apk`.
 
 ## Browser UI
 
 The preview shows the active device, stream status, screenshots, copy-to-clipboard,
 stream stats, logcat, drag-and-drop APK install/file push, phone hardware keys,
 and a TV D-pad remote. TV sessions reject touch input server-side.
+
+Video uses WebCodecs by default. Browsers without `VideoDecoder` automatically
+fall back to `/stream.mjpeg`, and `--mjpeg` or `?video=mjpeg` forces that mode.
+MJPEG is implemented with shared `adb screencap` polling at roughly 3 fps; it is
+a compatibility fallback, not a high-frame-rate stream.
 
 When serving on a LAN with `--host 0.0.0.0`, Porthole prints a tokenized URL.
 Non-local requests must present that token.

@@ -66,7 +66,7 @@ export function parseAvdList(stdout: string): string[] {
     .filter((line) => /^[A-Za-z0-9._-]+$/.test(line));
 }
 
-interface AdbDevice {
+export interface AdbDevice {
   serial: string;
   status: "device" | "offline";
 }
@@ -165,6 +165,7 @@ export async function listDevices(): Promise<DeviceInfo[]> {
 export interface BootOptions {
   sdk: string;
   avdName: string;
+  emulatorArgs?: string[];
 }
 
 const bootedByUs = new Set<string>();
@@ -177,7 +178,8 @@ export async function bootDevice(opts: BootOptions): Promise<string> {
   const { sdk, avdName } = opts;
   const emulator = emulatorBin(sdk);
 
-  const child = spawn(emulator, ["-avd", avdName, "-no-snapshot-load"], {
+  const args = ["-avd", avdName, ...(opts.emulatorArgs ?? ["-no-snapshot-load"])];
+  const child = spawn(emulator, args, {
     detached: true,
     stdio: "ignore",
   });
@@ -217,7 +219,15 @@ async function waitForBoot(
             "sys.boot_completed",
           ]);
           if (bootOut.trim() === "1") {
-            return dev.serial;
+            const { stdout: pmOut } = await execFileAsync(adb, [
+              "-s",
+              dev.serial,
+              "shell",
+              "pm",
+              "path",
+              "android",
+            ]);
+            if (pmOut.trim()) return dev.serial;
           }
         }
       } catch {

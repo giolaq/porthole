@@ -54,6 +54,18 @@ export async function postSessionJson(
   return { session, response: await res.json() };
 }
 
+export async function getSessionJson(
+  path: string,
+  opts: ControlClientOptions = {},
+): Promise<{ session: PortholeSessionRecord; response: unknown }> {
+  const session = await discoverSession(opts);
+  const res = await fetch(sessionUrl(session, path));
+  if (!res.ok) {
+    throw new Error(await responseError(res));
+  }
+  return { session, response: await res.json() };
+}
+
 export async function discoverSession(
   opts: ControlClientOptions = {},
 ): Promise<PortholeSessionRecord> {

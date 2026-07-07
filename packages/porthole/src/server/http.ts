@@ -10,6 +10,10 @@ import type { InputEvent } from "../input.js";
 import { assertInputAllowed, parseInputEvent } from "../input-validation.js";
 import type { DeviceInfo } from "../device-manager.js";
 import { readState } from "../state.js";
+import { MjpegPoller } from "./mjpeg.js";
+import { clearApp, openUrl, stopApp } from "../adb-actions.js";
+import { parseCrashes } from "../crashes.js";
+import { dumpUi, findElement, getFocusedNode, waitForUiText } from "../ui-tree.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,10 +35,23 @@ export interface HttpServerOptions {
   getDevice?: () => DeviceInfo;
   handleInput?: (event: InputEvent) => Promise<void>;
   token?: string;
+  forceMjpeg?: boolean;
+  getStatus?: () => "waiting" | "ok" | "reconnecting" | "dead";
 }
 
 export function createHttpServer(opts: HttpServerOptions) {
-  const { port, host, clientDir, getEngine, getDevice, handleInput, token } = opts;
+  const {
+    port,
+    host,
+    clientDir,
+    getEngine,
+    getDevice,
+    handleInput,
+    token,
+    forceMjpeg,
+    getStatus,
+  } = opts;
+  const mjpegPoller = new MjpegPoller(getEngine);
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const parsedUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? host}`);
@@ -56,15 +73,28 @@ export function createHttpServer(opts: HttpServerOptions) {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
-            status: "ok",
+            status: getStatus?.() ?? "ok",
             device: getDevice?.(),
+            videoModes: ["webcodecs", "mjpeg"],
+            preferredVideoMode: forceMjpeg ? "mjpeg" : "webcodecs",
             ...engine.metadata,
           }),
         );
       } else {
         res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "waiting" }));
+        res.end(JSON.stringify({ status: getStatus?.() ?? "waiting" }));
       }
+      return;
+    }
+
+    if (url === "/stream.mjpeg" && req.method === "GET") {
+      const engine = getEngine();
+      if (!engine) {
+        res.writeHead(503, { "Content-Type": "text/plain" });
+        res.end("No engine");
+        return;
+      }
+      mjpegPoller.addClient(res);
       return;
     }
 
@@ -138,6 +168,119 @@ export function createHttpServer(opts: HttpServerOptions) {
           maxBuffer: 8 * 1024 * 1024,
         });
         await sendJson(res, 200, { ok: true, logcat: stdout });
+      });
+      return;
+    }
+
+    if (url === "/api/crashes" && req.method === "GET") {
+      await withSerial(res, getDevice, async (serial) => {
+        const { stdout } = await execFileAsync(adbBin(findAndroidSdk()), [
+          "-s",
+          serial,
+          "logcat",
+          "-d",
+          "-t",
+          "1000",
+        ]);
+        await sendJson(res, 200, { ok: true, crashes: parseCrashes(stdout) });
+      });
+      return;
+    }
+
+    if (url === "/api/ui" && req.method === "GET") {
+      await withSerial(res, getDevice, async (serial) => {
+        await sendJson(res, 200, {
+          ok: true,
+          tree: await dumpUi(serial, parsedUrl.searchParams.get("filter") ?? undefined),
+        });
+      });
+      return;
+    }
+
+    if (url === "/api/focused" && req.method === "GET") {
+      await withSerial(res, getDevice, async (serial) => {
+        await sendJson(res, 200, { ok: true, node: await getFocusedNode(serial) });
+      });
+      return;
+    }
+
+    if (url === "/api/find" && req.method === "POST") {
+      await withSerial(res, getDevice, async (serial, device) => {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        const text = typeof body.text === "string" ? body.text : undefined;
+        const resourceId =
+          typeof body.resourceId === "string" ? body.resourceId : undefined;
+        if (!text && !resourceId) {
+          throw new Error("text or resourceId is required.");
+        }
+        const node = await findElement(serial, { text, resourceId });
+        if (node && body.tap === true && device.profile === "phone") {
+          const engine = getEngine();
+          const width = engine?.metadata?.width ?? 1;
+          const height = engine?.metadata?.height ?? 1;
+          await engine?.sendInput({
+            kind: "touch",
+            phase: "down",
+            x: node.center.x / width,
+            y: node.center.y / height,
+          });
+          await engine?.sendInput({
+            kind: "touch",
+            phase: "up",
+            x: node.center.x / width,
+            y: node.center.y / height,
+          });
+        }
+        await sendJson(res, 200, { ok: true, node });
+      });
+      return;
+    }
+
+    if (url === "/api/wait_for" && req.method === "POST") {
+      await withSerial(res, getDevice, async (serial) => {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        if (typeof body.text !== "string") throw new Error("text is required.");
+        const timeoutMs = typeof body.timeoutMs === "number" ? body.timeoutMs : 10_000;
+        await sendJson(res, 200, {
+          ok: true,
+          node: await waitForUiText(serial, body.text, timeoutMs),
+        });
+      });
+      return;
+    }
+
+    if (url === "/api/open_url" && req.method === "POST") {
+      await withSerial(res, getDevice, async (serial) => {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        if (typeof body.url !== "string") throw new Error("url is required.");
+        await sendJson(res, 200, {
+          ok: true,
+          stdout: await openUrl(serial, body.url),
+        });
+      });
+      return;
+    }
+
+    if (url === "/api/stop_app" && req.method === "POST") {
+      await withSerial(res, getDevice, async (serial) => {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        if (typeof body.packageName !== "string") {
+          throw new Error("packageName is required.");
+        }
+        await stopApp(serial, body.packageName);
+        await sendJson(res, 200, { ok: true });
+      });
+      return;
+    }
+
+    if (url === "/api/clear_app" && req.method === "POST") {
+      await withSerial(res, getDevice, async (serial) => {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        if (typeof body.packageName !== "string") {
+          throw new Error("packageName is required.");
+        }
+        await clearApp(serial, body.packageName);
+        await sendJson(res, 200, { ok: true });
       });
       return;
     }

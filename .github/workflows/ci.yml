@@ -25,6 +25,17 @@ jobs:
       - run: npm run test
       - run: npm run lint
       - run: npm run typecheck
+      - name: npm pack smoke
+        shell: bash
+        run: |
+          npm pack -w portholejs
+          mkdir -p /tmp/porthole-pack-smoke
+          cp portholejs-*.tgz /tmp/porthole-pack-smoke/
+          cd /tmp/porthole-pack-smoke
+          npm init -y
+          npm install ./portholejs-*.tgz
+          npx porthole --version
+          npx porthole list -q || true
 
   android-integration:
     name: Android integration

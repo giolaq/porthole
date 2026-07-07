@@ -110,12 +110,12 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
     const processMessage = (data: ArrayBuffer) => {
       if (!decoder || decoder.state === "closed") return;
 
-      const view = new DataView(data);
-      const type = view.getUint8(0);
-      const payload = new Uint8Array(data, 5);
+      const packet = decodePacket(data);
+      const type = packet.type;
+      const payload = packet.payload;
       windowBytes += payload.byteLength;
 
-      if (type === 0) {
+      if (type === "config") {
         configData = new Uint8Array(payload);
         lastConfigRef.current = configData;
         const codec = parseCodecFromSps(configData);
@@ -132,7 +132,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
 
       if (!configured || decoder.state !== "configured") return;
 
-      const keyframe = isKeyFrame(payload);
+      const keyframe = type === "key" || (type === "delta" && isKeyFrame(payload));
       if (waitingForKeyframe && !keyframe) return;
       if (keyframe) waitingForKeyframe = false;
 
@@ -141,7 +141,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
 
       const chunk = new EncodedVideoChunk({
         type: keyframe ? "key" : "delta",
-        timestamp: frameCount * (1_000_000 / 30),
+        timestamp: packet.timestamp || frameCount * (1_000_000 / 30),
         data: frameData,
       });
       frameCount++;
@@ -199,4 +199,22 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
       style={{ maxWidth: "100%", height: "auto", display: "block" }}
     />
   );
+}
+
+function decodePacket(data: ArrayBuffer): {
+  type: "config" | "delta" | "key";
+  timestamp: number;
+  payload: Uint8Array;
+} {
+  const view = new DataView(data);
+  const rawType = view.getUint8(0);
+  const hasV2Header = data.byteLength >= 13;
+  const length = view.getUint32(1);
+  const timestamp = hasV2Header ? view.getFloat64(5) : 0;
+  const offset = hasV2Header ? 13 : 5;
+  return {
+    type: rawType === 0 ? "config" : rawType === 2 ? "key" : "delta",
+    timestamp,
+    payload: new Uint8Array(data, offset, length),
+  };
 }

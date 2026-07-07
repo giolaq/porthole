@@ -21,6 +21,7 @@
   "license": "MIT",
   "files": [
     "dist/",
+    "!dist/__tests__/",
     "assets/scrcpy-server",
     "client-dist/"
   ],
@@ -35,7 +36,6 @@
     "@yume-chan/scrcpy": "^2.3.0",
     "@yume-chan/stream-extra": "^2.5.3",
     "commander": "^14.0.3",
-    "sharp": "^0.34.5",
     "ws": "^8.21.0"
   },
   "devDependencies": {
