@@ -21,6 +21,7 @@ export default tseslint.config(
       "**/*.mjs",
       "vitest.config.ts",
       "packages/porthole-client/vite.config.ts",
+      "examples/",
     ],
   },
 );
