@@ -1,0 +1,25 @@
+{
+  "name": "portholejs",
+  "version": "0.0.1",
+  "description": "A window into your Android emulator — stream and control AVDs from the browser",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "porthole": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "android",
+    "emulator",
+    "scrcpy",
+    "mcp"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
