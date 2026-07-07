@@ -1,5 +1,8 @@
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { findAndroidSdk, emulatorBin, adbBin, parseAvdList } from "../device-manager.js";
+
+const exe = process.platform === "win32" ? ".exe" : "";
 
 describe("device-manager utilities", () => {
   it("findAndroidSdk uses ANDROID_HOME if set", () => {
@@ -17,15 +20,11 @@ describe("device-manager utilities", () => {
   });
 
   it("emulatorBin produces correct path", () => {
-    const bin = emulatorBin("/sdk");
-    expect(bin).toContain("emulator");
-    expect(bin.startsWith("/sdk/")).toBe(true);
+    expect(emulatorBin("/sdk")).toBe(join("/sdk", "emulator", `emulator${exe}`));
   });
 
   it("adbBin produces correct path", () => {
-    const bin = adbBin("/sdk");
-    expect(bin).toContain("platform-tools");
-    expect(bin.startsWith("/sdk/")).toBe(true);
+    expect(adbBin("/sdk")).toBe(join("/sdk", "platform-tools", `adb${exe}`));
   });
 
   it("filters emulator diagnostics from AVD list output", () => {
