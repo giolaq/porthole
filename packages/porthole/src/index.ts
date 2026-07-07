@@ -10,6 +10,7 @@ export { detectProfileFromConfig, detectProfile } from "./profiles.js";
 export { ScrcpyEngine } from "./engine/scrcpy-engine.js";
 export { Session } from "./session.js";
 export { startMcpServer } from "./mcp/server.js";
+export { createPortholeMiddleware, attachPortholeWs } from "./middleware.js";
 export type { DeviceInfo } from "./device-manager.js";
 export type { DeviceProfile } from "./profiles.js";
 export type {

@@ -1,15 +1,18 @@
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { Engine, VideoChunk } from "../engine/types.js";
-import type { InputEvent } from "../input.js";
+import { assertInputAllowed, parseInputEvent } from "../input-validation.js";
+import type { DeviceInfo } from "../device-manager.js";
 
 export interface WsServerOptions {
   httpServer: Server;
   getEngine: () => Engine | null;
+  getDevice?: () => DeviceInfo;
+  token?: string;
 }
 
 export function createWsServer(opts: WsServerOptions) {
-  const { httpServer, getEngine } = opts;
+  const { httpServer, getEngine, getDevice, token } = opts;
 
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
@@ -47,7 +50,11 @@ export function createWsServer(opts: WsServerOptions) {
     });
   }
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
+    if (!isAuthorized(req, token)) {
+      ws.close(1008, "Porthole token required.");
+      return;
+    }
     // Send cached config + keyframe so late-joining clients can decode immediately
     if (lastConfig) ws.send(lastConfig);
     if (lastKeyframe) ws.send(lastKeyframe);
@@ -57,7 +64,9 @@ export function createWsServer(opts: WsServerOptions) {
       if (!engine) return;
 
       try {
-        const event = JSON.parse(data.toString()) as InputEvent;
+        const event = parseInputEvent(JSON.parse(data.toString()));
+        const device = getDevice?.();
+        if (device) assertInputAllowed(device.profile, event);
         void engine.sendInput(event);
       } catch {
         // Invalid message, ignore
@@ -66,6 +75,32 @@ export function createWsServer(opts: WsServerOptions) {
   });
 
   return { wss, attachEngine };
+}
+
+function isAuthorized(req: IncomingMessage, token: string | undefined): boolean {
+  if (!token) return true;
+  if (isLocalAddress(req.socket.remoteAddress)) return true;
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (url.searchParams.get("token") === token) return true;
+  return parseCookie(req.headers.cookie ?? "").get("porthole_token") === token;
+}
+
+function isLocalAddress(address: string | undefined): boolean {
+  return (
+    !address ||
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1"
+  );
+}
+
+function parseCookie(cookie: string): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const part of cookie.split(";")) {
+    const [key, value] = part.trim().split("=");
+    if (key && value) values.set(key, value);
+  }
+  return values;
 }
 
 function hasIdrNal(data: Uint8Array): boolean {

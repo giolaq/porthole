@@ -82,9 +82,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
       onMouseDown={(e) =>
         ((e.currentTarget as HTMLElement).style.transform = "scale(0.93)")
       }
-      onMouseUp={(e) =>
-        ((e.currentTarget as HTMLElement).style.transform = "scale(1)")
-      }
+      onMouseUp={(e) => ((e.currentTarget as HTMLElement).style.transform = "scale(1)")}
       onMouseLeave={(e) =>
         ((e.currentTarget as HTMLElement).style.transform = "scale(1)")
       }
@@ -104,8 +102,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
         flexDirection: "column",
         alignItems: "center",
         gap: "20px",
-        boxShadow:
-          "0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)",
         border: "1px solid #2a2a2a",
       }}
     >
@@ -129,8 +126,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
           height: "140px",
           borderRadius: "50%",
           background: "#222",
-          boxShadow:
-            "inset 0 2px 8px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)",
+          boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

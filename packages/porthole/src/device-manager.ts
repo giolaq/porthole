@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { detectProfile, type DeviceProfile } from "./profiles.js";
+import { isSerialBootedByPorthole, removeSession } from "./state.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -9,7 +10,7 @@ export interface DeviceInfo {
   name: string;
   serial: string | null;
   profile: DeviceProfile;
-  state: "running" | "stopped";
+  state: "running" | "stopped" | "offline";
 }
 
 export function findAndroidSdk(): string {
@@ -50,18 +51,24 @@ export function adbBin(sdk: string): string {
 export async function listAvds(sdk: string): Promise<string[]> {
   try {
     const { stdout } = await execFileAsync(emulatorBin(sdk), ["-list-avds"]);
-    return stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
+    return parseAvdList(stdout);
   } catch {
     return [];
   }
 }
 
+export function parseAvdList(stdout: string): string[] {
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^(INFO|WARNING|ERROR)\s*\|/.test(line))
+    .filter((line) => /^[A-Za-z0-9._-]+$/.test(line));
+}
+
 interface AdbDevice {
   serial: string;
-  status: string;
+  status: "device" | "offline";
 }
 
 export async function listRunningDevices(sdk: string): Promise<AdbDevice[]> {
@@ -73,12 +80,19 @@ export async function listRunningDevices(sdk: string): Promise<AdbDevice[]> {
         const parts = line.trim().split(/\s+/);
         const serial = parts[0];
         const status = parts[1];
-        if (parts.length >= 2 && serial && status) {
+        if (
+          parts.length >= 2 &&
+          serial &&
+          (status === "device" || status === "offline")
+        ) {
           return { serial, status };
         }
         return null;
       })
-      .filter((d): d is AdbDevice => d !== null && d.status === "device");
+      .filter(
+        (d): d is AdbDevice =>
+          d !== null && (d.status === "device" || d.status === "offline"),
+      );
   } catch {
     return [];
   }
@@ -95,9 +109,10 @@ export async function listDevices(): Promise<DeviceInfo[]> {
   const sdk = findAndroidSdk();
   const [avds, running] = await Promise.all([listAvds(sdk), listRunningDevices(sdk)]);
 
-  const runningNames = new Map<string, string>();
+  const runningNames = new Map<string, AdbDevice>();
+  const namedSerials = new Set<string>();
   for (const dev of running) {
-    if (dev.serial.startsWith("emulator-")) {
+    if (dev.serial.startsWith("emulator-") && dev.status === "device") {
       try {
         const { stdout } = await execFileAsync(adbBin(sdk), [
           "-s",
@@ -108,7 +123,8 @@ export async function listDevices(): Promise<DeviceInfo[]> {
         ]);
         const name = stdout.split("\n")[0]?.trim();
         if (name) {
-          runningNames.set(name, dev.serial);
+          runningNames.set(name, dev);
+          namedSerials.add(dev.serial);
         }
       } catch {
         // ignore — can't determine AVD name
@@ -120,14 +136,26 @@ export async function listDevices(): Promise<DeviceInfo[]> {
   const devices: DeviceInfo[] = [];
 
   for (const name of avds) {
-    const serial = runningNames.get(name) ?? null;
+    const runningDevice = runningNames.get(name);
+    const serial = runningDevice?.serial ?? null;
     const avdPath = join(avdBase, `${name}.avd`);
     const profile = await detectProfile(avdPath);
     devices.push({
       name,
       serial,
       profile,
-      state: serial ? "running" : "stopped",
+      state:
+        runningDevice?.status === "offline" ? "offline" : serial ? "running" : "stopped",
+    });
+  }
+
+  for (const dev of running) {
+    if (namedSerials.has(dev.serial)) continue;
+    devices.push({
+      name: dev.serial,
+      serial: dev.serial,
+      profile: "phone",
+      state: dev.status === "offline" ? "offline" : "running",
     });
   }
 
@@ -141,8 +169,8 @@ export interface BootOptions {
 
 const bootedByUs = new Set<string>();
 
-export function wasBootedByUs(serial: string): boolean {
-  return bootedByUs.has(serial);
+export async function wasBootedByUs(serial: string): Promise<boolean> {
+  return bootedByUs.has(serial) || (await isSerialBootedByPorthole(serial));
 }
 
 export async function bootDevice(opts: BootOptions): Promise<string> {
@@ -206,4 +234,28 @@ export async function shutdownDevice(sdk: string, serial: string): Promise<void>
   const adb = adbBin(sdk);
   await execFileAsync(adb, ["-s", serial, "emu", "kill"]);
   bootedByUs.delete(serial);
+  await removeSession({ serial });
+}
+
+export async function reconnectOfflineDevices(
+  sdk: string,
+  serial?: string,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const adb = adbBin(sdk);
+  await execFileAsync(adb, ["reconnect", "offline"]);
+  if (!serial) return;
+
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const devices = await listRunningDevices(sdk);
+    if (
+      devices.some((device) => device.serial === serial && device.status === "device")
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`Device ${serial} is still offline after adb reconnect offline.`);
 }

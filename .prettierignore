@@ -1,4 +1,4 @@
-dist/
-node_modules/
-assets/
+.claude/
+docs/CODEX_PLAN.md
 examples/
+packages/porthole/client-dist/

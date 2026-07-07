@@ -1,13 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { VideoCanvas } from "./video-canvas.js";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { VideoCanvas, type VideoStats } from "./video-canvas.js";
 import { TouchOverlay } from "./touch-overlay.js";
 import { TvRemote } from "./tv-remote.js";
+import { DevicePicker } from "./device-picker.js";
 
 interface HealthResponse {
   status: string;
   codec?: string;
   width?: number;
   height?: number;
+  device?: Device;
+}
+
+interface Device {
+  name: string;
+  serial: string | null;
+  profile: "phone" | "tv";
+  state: "running" | "stopped" | "offline";
 }
 
 export function App() {
@@ -15,6 +24,14 @@ export function App() {
   const [connected, setConnected] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [profile, setProfile] = useState<"phone" | "tv">("phone");
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
+  const [logs, setLogs] = useState("");
+  const [logFilter, setLogFilter] = useState("");
+  const [stats, setStats] = useState<VideoStats | null>(null);
+  const [showStats, setShowStats] = useState(true);
+  const [keyboardCaptured, setKeyboardCaptured] = useState(false);
+  const [toast, setToast] = useState("");
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -24,19 +41,37 @@ export function App() {
         const data = (await res.json()) as HealthResponse;
         setHealth(data);
         if (data.status === "ok") {
-          setProfile(
-            data.width && data.height && data.width > data.height ? "tv" : "phone",
-          );
+          setProfile(data.device?.profile ?? inferProfile(data.width, data.height));
         }
       } catch {
         setHealth(null);
       }
     };
 
+    const pollDevices = async () => {
+      try {
+        const res = await fetch("/api/devices");
+        setDevices((await res.json()) as Device[]);
+      } catch {
+        setDevices([]);
+      }
+    };
+
     void pollHealth();
+    void pollDevices();
     const interval = setInterval(() => void pollHealth(), 3000);
-    return () => clearInterval(interval);
+    const deviceInterval = setInterval(() => void pollDevices(), 5000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(deviceInterval);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = setTimeout(() => setToast(""), 2500);
+    return () => clearTimeout(timeout);
+  }, [toast]);
 
   useEffect(() => {
     const connect = () => {
@@ -52,8 +87,7 @@ export function App() {
           earlyMessages.push(e.data as ArrayBuffer);
         }
       });
-      (socket as unknown as Record<string, unknown>)._earlyMessages =
-        earlyMessages;
+      (socket as unknown as Record<string, unknown>)._earlyMessages = earlyMessages;
       (socket as unknown as Record<string, unknown>)._markDrained = () => {
         drained = true;
       };
@@ -81,18 +115,83 @@ export function App() {
   const width = health?.width ?? 1080;
   const height = health?.height ?? 1920;
 
-  const takeScreenshot = async () => {
+  useEffect(() => {
+    if (!keyboardCaptured) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setKeyboardCaptured(false);
+        return;
+      }
+      if (profile === "tv") return;
+      const keycode = phoneKeycode(event.key);
+      if (keycode) {
+        event.preventDefault();
+        sendInput({ kind: "key", phase: "down", keycode });
+        sendInput({ kind: "key", phase: "up", keycode });
+      } else if (event.key.length === 1) {
+        sendInput({ kind: "text", text: event.key });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [keyboardCaptured, profile, ws]);
+
+  const takeScreenshot = async (copy: boolean) => {
     try {
       const res = await fetch("/screenshot");
       const blob = await res.blob();
+      if (copy && navigator.clipboard && "ClipboardItem" in window) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ [blob.type || "image/png"]: blob }),
+        ]);
+        setToast("Screenshot copied");
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = "screenshot.png";
       a.click();
       URL.revokeObjectURL(url);
+      setToast("Screenshot saved");
     } catch {
-      // ignore
+      setToast("Screenshot failed");
+    }
+  };
+
+  const fetchLogs = async () => {
+    try {
+      const query = new URLSearchParams({ lines: "300" });
+      if (logFilter) query.set("filter", logFilter);
+      const res = await fetch(`/api/logcat?${query}`);
+      const data = (await res.json()) as { logcat?: string };
+      setLogs(data.logcat ?? "");
+    } catch {
+      setLogs("Unable to read logcat.");
+    }
+  };
+
+  const sendInput = (event: unknown) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify(event));
+  };
+
+  const handleDrop = async (event: React.DragEvent) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+    const endpoint = file.name.endsWith(".apk") ? "/api/install" : "/api/push";
+    setToast(file.name.endsWith(".apk") ? "Installing APK..." : "Pushing file...");
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "x-porthole-filename": file.name },
+        body: file,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setToast(file.name.endsWith(".apk") ? "APK installed" : "File pushed");
+    } catch {
+      setToast("Drop failed");
     }
   };
 
@@ -117,6 +216,11 @@ export function App() {
         }}
       >
         <strong>Porthole</strong>
+        <DevicePicker
+          devices={devices}
+          selected={health?.device ?? null}
+          onSelect={(device) => setToast(`${device.name} selected`)}
+        />
         <span
           style={{
             width: "8px",
@@ -131,18 +235,28 @@ export function App() {
         <span style={{ fontSize: "12px", color: "#888", marginLeft: "auto" }}>
           [{profile}] {width}x{height}
         </span>
+        {showStats && stats && (
+          <span style={{ fontSize: "12px", color: "#aaa" }}>
+            {stats.fps}fps {stats.bitrateKbps}kbps q{stats.queue}
+          </span>
+        )}
+        <button onClick={() => setShowStats((value) => !value)} style={headerButtonStyle}>
+          Stats
+        </button>
+        <button onClick={() => void takeScreenshot(false)} style={headerButtonStyle}>
+          Save
+        </button>
+        <button onClick={() => void takeScreenshot(true)} style={headerButtonStyle}>
+          Copy
+        </button>
         <button
-          onClick={() => void takeScreenshot()}
-          style={{
-            padding: "4px 12px",
-            background: "#333",
-            border: "1px solid #555",
-            borderRadius: "4px",
-            color: "#eee",
-            cursor: "pointer",
+          onClick={() => {
+            setShowLogs((value) => !value);
+            if (!showLogs) void fetchLogs();
           }}
+          style={headerButtonStyle}
         >
-          Screenshot
+          Logs
         </button>
       </header>
 
@@ -155,8 +269,13 @@ export function App() {
           gap: "16px",
           padding: "16px",
         }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => void handleDrop(event)}
       >
         <div
+          tabIndex={0}
+          onFocus={() => setKeyboardCaptured(true)}
+          onBlur={() => setKeyboardCaptured(false)}
           style={{
             position: "relative",
             aspectRatio: `${width}/${height}`,
@@ -166,12 +285,154 @@ export function App() {
             overflow: "hidden",
           }}
         >
-          <VideoCanvas ws={ws} width={width} height={height} />
+          <VideoCanvas ws={ws} width={width} height={height} onStats={setStats} />
           {profile === "phone" && <TouchOverlay ws={ws} />}
+          {keyboardCaptured && (
+            <div
+              style={{
+                position: "absolute",
+                right: 8,
+                bottom: 8,
+                padding: "4px 8px",
+                borderRadius: "4px",
+                background: "rgba(0,0,0,0.7)",
+                color: "#fff",
+                fontSize: "12px",
+              }}
+            >
+              keyboard captured
+            </div>
+          )}
         </div>
 
-        {profile === "tv" && <TvRemote ws={ws} />}
+        {profile === "tv" ? (
+          <TvRemote ws={ws} />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <PhoneButton label="Back" keycode={4} sendInput={sendInput} />
+            <PhoneButton label="Home" keycode={3} sendInput={sendInput} />
+            <PhoneButton label="Recents" keycode={187} sendInput={sendInput} />
+            <PhoneButton label="Power" keycode={26} sendInput={sendInput} />
+            <PhoneButton label="Vol+" keycode={24} sendInput={sendInput} />
+            <PhoneButton label="Vol-" keycode={25} sendInput={sendInput} />
+          </div>
+        )}
       </main>
+      {showLogs && (
+        <section
+          style={{
+            borderTop: "1px solid #333",
+            height: "28vh",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", gap: "8px", padding: "8px" }}>
+            <input
+              value={logFilter}
+              onChange={(event) => setLogFilter(event.target.value)}
+              placeholder="filter"
+              style={{
+                flex: 1,
+                background: "#222",
+                color: "#eee",
+                border: "1px solid #444",
+              }}
+            />
+            <button onClick={() => void fetchLogs()} style={headerButtonStyle}>
+              Refresh
+            </button>
+          </div>
+          <pre
+            style={{
+              flex: 1,
+              overflow: "auto",
+              margin: 0,
+              padding: "8px",
+              fontSize: "12px",
+              color: "#cfcfcf",
+              background: "#080808",
+            }}
+          >
+            {logs}
+          </pre>
+        </section>
+      )}
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: 20,
+            transform: "translateX(-50%)",
+            background: "#222",
+            border: "1px solid #555",
+            borderRadius: "6px",
+            padding: "8px 12px",
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
+}
+
+const headerButtonStyle: CSSProperties = {
+  padding: "4px 10px",
+  background: "#333",
+  border: "1px solid #555",
+  borderRadius: "4px",
+  color: "#eee",
+  cursor: "pointer",
+};
+
+function PhoneButton({
+  label,
+  keycode,
+  sendInput,
+}: {
+  label: string;
+  keycode: number;
+  sendInput: (event: unknown) => void;
+}) {
+  return (
+    <button
+      onClick={() => {
+        sendInput({ kind: "key", phase: "down", keycode });
+        sendInput({ kind: "key", phase: "up", keycode });
+      }}
+      style={{ ...headerButtonStyle, minWidth: "78px", height: "34px" }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function inferProfile(
+  width: number | undefined,
+  height: number | undefined,
+): "phone" | "tv" {
+  return width && height && width > height ? "tv" : "phone";
+}
+
+function phoneKeycode(key: string): number | null {
+  switch (key) {
+    case "Escape":
+      return 4;
+    case "Home":
+      return 3;
+    case "ArrowUp":
+      return 19;
+    case "ArrowDown":
+      return 20;
+    case "ArrowLeft":
+      return 21;
+    case "ArrowRight":
+      return 22;
+    case "Enter":
+      return 66;
+    default:
+      return null;
+  }
 }

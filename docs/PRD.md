@@ -70,11 +70,14 @@ D-pad remote, which no lightweight tool offers.
 - **Physical Android devices** — the scrcpy engine technically supports them,
   but v1 neither targets nor tests them. Do not add device-specific code paths.
 - **Audio** forwarding.
-- **Emulator extended controls** (rotation, battery, GPS, locale) — deferred to
-  a later version; may later layer on `adb emu` / emulator gRPC.
 - **Screen recording to file.**
 - Wear OS / Android Auto profiles.
 - Heavyweight auth/accounts — only a simple shared token for LAN exposure (§8.7).
+
+### Added after v1 spec
+
+- Emulator controls such as rotation and `adb emu` passthrough are now in scope
+  for the implementation roadmap in `docs/CODEX_PLAN.md`.
 
 ---
 

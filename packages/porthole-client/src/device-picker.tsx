@@ -2,7 +2,7 @@ interface Device {
   name: string;
   serial: string | null;
   profile: "phone" | "tv";
-  state: "running" | "stopped";
+  state: "running" | "stopped" | "offline";
 }
 
 interface DevicePickerProps {
@@ -17,22 +17,23 @@ export function DevicePicker({ devices, selected, onSelect }: DevicePickerProps)
   }
 
   return (
-    <div style={{ display: "flex", gap: "8px", padding: "8px", flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
       {devices.map((d) => (
         <button
           key={d.name}
           onClick={() => onSelect(d)}
           style={{
-            padding: "8px 12px",
+            padding: "4px 8px",
             border: selected?.name === d.name ? "2px solid #4af" : "1px solid #444",
             borderRadius: "6px",
             background: selected?.name === d.name ? "#1a3a5a" : "#222",
             color: "#fff",
             cursor: "pointer",
-            fontSize: "13px",
+            fontSize: "12px",
           }}
         >
-          {d.name} [{d.profile}] {d.state === "running" ? "●" : "○"}
+          {d.name} [{d.profile}]{" "}
+          {d.state === "running" ? "*" : d.state === "offline" ? "!" : "o"}
         </button>
       ))}
     </div>

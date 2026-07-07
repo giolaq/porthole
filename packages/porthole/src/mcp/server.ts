@@ -1,16 +1,15 @@
-import { join, resolve } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { listDevices, findAndroidSdk, bootDevice } from "../device-manager.js";
+import { adbBin, listDevices, findAndroidSdk, bootDevice } from "../device-manager.js";
 import type { RemoteButton } from "../keycodes.js";
 import { ScrcpyEngine } from "../engine/scrcpy-engine.js";
 import type { Engine } from "../engine/types.js";
 import type { InputEvent } from "../input.js";
-
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+import { scrcpyServerPath } from "../paths.js";
 
 let engine: Engine | null = null;
+let activeSerial: string | null = null;
 
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
@@ -24,7 +23,14 @@ export async function startMcpServer(): Promise<void> {
     {},
     async () => {
       const devices = await listDevices();
-      return { content: [{ type: "text", text: JSON.stringify(devices, null, 2) }] };
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ devices }, null, 2),
+          },
+        ],
+      };
     },
   );
 
@@ -35,7 +41,41 @@ export async function startMcpServer(): Promise<void> {
     async ({ avdName }) => {
       const sdk = findAndroidSdk();
       const serial = await bootDevice({ sdk, avdName });
-      return { content: [{ type: "text", text: `Booted ${avdName} (${serial})` }] };
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ ok: true, avdName, serial }),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "wait_for_boot",
+    "Wait until a running emulator reports sys.boot_completed=1",
+    {
+      serial: z
+        .string()
+        .optional()
+        .describe("Device serial; defaults to the attached device"),
+      timeoutMs: z.number().optional().describe("Timeout in milliseconds"),
+    },
+    async ({ serial, timeoutMs }) => {
+      const targetSerial = serial ?? activeSerial;
+      if (!targetSerial) {
+        return { content: [{ type: "text", text: "No serial provided or attached." }] };
+      }
+      await waitForBootCompleted(targetSerial, timeoutMs ?? 120_000);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ ok: true, serial: targetSerial }),
+          },
+        ],
+      };
     },
   );
 
@@ -58,9 +98,10 @@ export async function startMcpServer(): Promise<void> {
 
       engine = new ScrcpyEngine({
         serial,
-        serverPath: join(REPO_ROOT, "assets", "scrcpy-server"),
+        serverPath: scrcpyServerPath(),
       });
       await engine.start();
+      activeSerial = serial;
 
       return {
         content: [
@@ -200,6 +241,39 @@ export async function startMcpServer(): Promise<void> {
   );
 
   server.tool(
+    "install_apk",
+    "Install an APK on the attached emulator",
+    { path: z.string().describe("Local path to an APK file") },
+    async ({ path }) => {
+      if (!activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      const { execFile: execFileCb } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileP = promisify(execFileCb);
+      const { stdout, stderr } = await execFileP(adbBin(findAndroidSdk()), [
+        "-s",
+        activeSerial,
+        "install",
+        "-r",
+        path,
+      ]);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ ok: true, serial: activeSerial, stdout, stderr }),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
     "read_logcat",
     "Read recent logcat output from the device",
     {
@@ -218,13 +292,11 @@ export async function startMcpServer(): Promise<void> {
       const { promisify } = await import("node:util");
       const execFileP = promisify(execFileCb);
 
-      const devices = await listDevices();
-      const device = devices.find((d) => d.serial !== null);
-      if (!device?.serial) {
+      if (!activeSerial) {
         return { content: [{ type: "text", text: "No device serial" }] };
       }
 
-      const args = ["-s", device.serial, "logcat", "-d", "-t", String(lines ?? 50)];
+      const args = ["-s", activeSerial, "logcat", "-d", "-t", String(lines ?? 50)];
       if (filter) args.push(filter);
 
       try {
@@ -238,4 +310,30 @@ export async function startMcpServer(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+}
+
+async function waitForBootCompleted(serial: string, timeoutMs: number): Promise<void> {
+  const { execFile: execFileCb } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileP = promisify(execFileCb);
+  const adb = adbBin(findAndroidSdk());
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const { stdout } = await execFileP(adb, [
+        "-s",
+        serial,
+        "shell",
+        "getprop",
+        "sys.boot_completed",
+      ]);
+      if (stdout.trim() === "1") return;
+    } catch {
+      // keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  throw new Error(`Timed out waiting for ${serial} to boot.`);
 }

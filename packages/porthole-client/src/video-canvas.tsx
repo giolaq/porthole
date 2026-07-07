@@ -4,6 +4,14 @@ interface VideoCanvasProps {
   ws: WebSocket | null;
   width: number;
   height: number;
+  onStats?: (stats: VideoStats) => void;
+}
+
+export interface VideoStats {
+  fps: number;
+  bitrateKbps: number;
+  queue: number;
+  resolution: string;
 }
 
 function isKeyFrame(data: Uint8Array): boolean {
@@ -52,7 +60,7 @@ function concatBuffers(a: Uint8Array, b: Uint8Array): Uint8Array {
   return result;
 }
 
-export function VideoCanvas({ ws, width, height }: VideoCanvasProps) {
+export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastConfigRef = useRef<Uint8Array | null>(null);
 
@@ -67,7 +75,15 @@ export function VideoCanvas({ ws, width, height }: VideoCanvasProps) {
     let configured = false;
     let waitingForKeyframe = true;
     let frameCount = 0;
+    let windowFrames = 0;
+    let windowBytes = 0;
+    let windowStart = performance.now();
     let decoder: VideoDecoder | null = null;
+
+    if (!("VideoDecoder" in window)) {
+      console.warn("[porthole] VideoDecoder unavailable; MJPEG fallback required.");
+      return;
+    }
 
     try {
       decoder = new VideoDecoder({
@@ -97,6 +113,7 @@ export function VideoCanvas({ ws, width, height }: VideoCanvasProps) {
       const view = new DataView(data);
       const type = view.getUint8(0);
       const payload = new Uint8Array(data, 5);
+      windowBytes += payload.byteLength;
 
       if (type === 0) {
         configData = new Uint8Array(payload);
@@ -128,7 +145,21 @@ export function VideoCanvas({ ws, width, height }: VideoCanvasProps) {
         data: frameData,
       });
       frameCount++;
+      windowFrames++;
       decoder.decode(chunk);
+
+      const now = performance.now();
+      if (now - windowStart >= 1000) {
+        onStats?.({
+          fps: Math.round((windowFrames * 1000) / (now - windowStart)),
+          bitrateKbps: Math.round((windowBytes * 8) / (now - windowStart)),
+          queue: decoder.decodeQueueSize,
+          resolution: `${width}x${height}`,
+        });
+        windowFrames = 0;
+        windowBytes = 0;
+        windowStart = now;
+      }
     };
 
     // Process any buffered messages and handle new ones
@@ -158,7 +189,7 @@ export function VideoCanvas({ ws, width, height }: VideoCanvasProps) {
         decoder.close();
       }
     };
-  }, [ws, width, height]);
+  }, [ws, width, height, onStats]);
 
   return (
     <canvas

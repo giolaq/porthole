@@ -9,7 +9,7 @@
     "porthole": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-package-assets.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -19,6 +19,11 @@
     "mcp"
   ],
   "license": "MIT",
+  "files": [
+    "dist/",
+    "assets/scrcpy-server",
+    "client-dist/"
+  ],
   "engines": {
     "node": ">=20"
   },
