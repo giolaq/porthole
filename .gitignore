@@ -3,4 +3,5 @@ dist/
 *.tsbuildinfo
 packages/porthole/assets/
 packages/porthole/client-dist/
-assets/
+assets/*
+!assets/porthole-logo.png

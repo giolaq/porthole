@@ -1,5 +1,9 @@
 # Porthole
 
+<p align="center">
+  <img src="assets/porthole-logo.png" alt="Porthole logo" width="220">
+</p>
+
 A window into your Android emulator — `npx portholejs`.
 
 Porthole boots or attaches to Android phone and TV AVDs, streams them to a browser,
