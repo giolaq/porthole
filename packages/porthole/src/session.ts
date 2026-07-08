@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Engine } from "./engine/types.js";
 import { ScrcpyEngine } from "./engine/scrcpy-engine.js";
+import { VegaEngine } from "./engine/vega-engine.js";
 import { createHttpServer } from "./server/http.js";
 import { createWsServer } from "./server/ws.js";
 import type { DeviceInfo } from "./device-manager.js";
@@ -28,6 +29,7 @@ export interface SessionOptions {
   detached?: boolean;
   token?: string;
   forceMjpeg?: boolean;
+  engineKind?: "scrcpy" | "vega";
 }
 
 export interface SessionDeviceOptions {
@@ -57,6 +59,7 @@ export class Session {
   private readonly detached: boolean;
   private readonly token?: string;
   private readonly forceMjpeg: boolean;
+  private readonly engineKind: "scrcpy" | "vega";
 
   constructor(opts: SessionOptions) {
     const devices = opts.devices ?? (opts.device ? [{ device: opts.device }] : []);
@@ -89,6 +92,7 @@ export class Session {
       opts.token ??
       (isLanHost(opts.host) ? randomBytes(18).toString("base64url") : undefined);
     this.forceMjpeg = opts.forceMjpeg ?? false;
+    this.engineKind = opts.engineKind ?? "scrcpy";
   }
 
   async start(): Promise<{ url: string }> {
@@ -148,13 +152,16 @@ export class Session {
     if (!runtime.device.serial) {
       throw new Error("Device has no serial — is it running?");
     }
-    const engine = new ScrcpyEngine({
-      serial: runtime.device.serial,
-      maxSize: this.maxSize,
-      maxFps: this.maxFps,
-      bitrate: this.bitrate,
-      serverPath: scrcpyServerPath(),
-    });
+    const engine: Engine =
+      this.engineKind === "vega"
+        ? new VegaEngine()
+        : new ScrcpyEngine({
+            serial: runtime.device.serial,
+            maxSize: this.maxSize,
+            maxFps: this.maxFps,
+            bitrate: this.bitrate,
+            serverPath: scrcpyServerPath(),
+          });
     runtime.engine = engine;
     engine.onClose?.(() => {
       if (!runtime.stopping) void this.restartEngine(runtime);
@@ -190,7 +197,10 @@ export class Session {
     const runtime = this.getRuntime(deviceId);
     const engine = runtime.engine;
     if (!engine) throw new Error("Session not started");
-    if (runtime.device.profile === "tv") await this.ensureTvAwake(runtime);
+    // TV auto-wake uses adb dumpsys, which does not exist on Vega guests.
+    if (runtime.device.profile === "tv" && this.engineKind === "scrcpy") {
+      await this.ensureTvAwake(runtime);
+    }
     if (event.kind === "gesture") {
       await sendGesture(event, (touch) => engine.sendInput(touch));
       return;

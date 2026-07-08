@@ -1,7 +1,7 @@
 import type { EngineInputEvent, VideoChunk } from "../protocol.js";
 
 export interface EngineMetadata {
-  codec: "h264";
+  codec: "h264" | "mjpeg";
   width: number;
   height: number;
 }
