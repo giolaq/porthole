@@ -29,6 +29,39 @@ const REMOTE_TO_QCODE: Record<RemoteButton, string> = {
   volume_down: "volumedown",
 };
 
+// macOS virtual key codes for the GUI-relay input path. The VVD's own
+// -keyboard-mapping translates ESC→BACK and F1..F5→HOME/MENU/REW/PLAY/FF.
+const REMOTE_TO_MAC_KEYCODE: Record<RemoteButton, number | undefined> = {
+  dpad_up: 126,
+  dpad_down: 125,
+  dpad_left: 123,
+  dpad_right: 124,
+  select: 36, // return
+  back: 53, // escape → KEY_BACK via VVD keyboard-mapping
+  home: 122, // F1 → KEY_HOMEPAGE
+  menu: 120, // F2 → KEY_MENU
+  rewind: 99, // F3 → KEY_REWIND
+  play_pause: 118, // F4 → KEY_PLAYPAUSE
+  fast_forward: 96, // F5 → KEY_FASTFORWARD
+  volume_up: undefined,
+  volume_down: undefined,
+};
+
+const ANDROID_KEYCODE_TO_MAC_KEYCODE: Record<number, number> = {
+  3: 122, // HOME → F1
+  4: 53, // BACK → ESC
+  19: 126,
+  20: 125,
+  21: 123,
+  22: 124,
+  23: 36,
+  66: 36,
+  82: 120, // MENU → F2
+  85: 118, // PLAY_PAUSE → F4
+  89: 99, // REWIND → F3
+  90: 96, // FAST_FORWARD → F5
+};
+
 const ANDROID_KEYCODE_TO_QCODE: Record<number, string> = {
   3: "f1", // HOME
   4: "esc", // BACK
@@ -88,28 +121,45 @@ export class VegaEngine implements Engine {
 
   async sendInput(event: EngineInputEvent): Promise<void> {
     if (event.kind === "remote") {
-      await this.qmpSendKey(REMOTE_TO_QCODE[event.button]);
+      await this.sendKey(
+        REMOTE_TO_QCODE[event.button],
+        REMOTE_TO_MAC_KEYCODE[event.button],
+      );
       return;
     }
     if (event.kind === "key") {
-      // QMP send-key emits a full press; only act on the down phase so the
+      // A full press is emitted per event; only act on the down phase so the
       // client's down/up pairs do not double-press.
       if (event.phase !== "down") return;
       const qcode = ANDROID_KEYCODE_TO_QCODE[event.keycode];
       if (!qcode) {
         throw new Error(`No Vega key mapping for Android keycode ${event.keycode}`);
       }
-      await this.qmpSendKey(qcode);
+      await this.sendKey(qcode, ANDROID_KEYCODE_TO_MAC_KEYCODE[event.keycode]);
       return;
     }
     if (event.kind === "text") {
       for (const char of event.text) {
         const qcode = textQcode(char);
-        if (qcode) await this.qmpSendKey(qcode);
+        if (qcode) await this.sendKey(qcode);
       }
       return;
     }
     throw new Error("Touch input is not available for Vega devices.");
+  }
+
+  // Vega's inputd only delivers keys that arrive through the VVD GUI's own
+  // channel (QMP/console-injected events are consumed as wake-ups). Until
+  // Amazon exposes a headless injection API, the working path on macOS is
+  // relaying a native keystroke to the focused VVD window. QMP remains as
+  // fallback for non-macOS or when PORTHOLE_VEGA_INPUT=qmp.
+  private async sendKey(qcode: string, macKeyCode?: number): Promise<void> {
+    const mode = process.env["PORTHOLE_VEGA_INPUT"] ?? "gui";
+    if (mode === "gui" && process.platform === "darwin" && macKeyCode !== undefined) {
+      await sendMacKeystrokeToVvd(macKeyCode);
+      return;
+    }
+    await this.qmpSendKey(qcode);
   }
 
   async screenshot(): Promise<Uint8Array> {
@@ -224,6 +274,36 @@ export class VegaEngine implements Engine {
         }
       });
     });
+  }
+}
+
+async function sendMacKeystrokeToVvd(macKeyCode: number): Promise<void> {
+  const script = [
+    'tell application "System Events"',
+    'set vvd to first process whose name contains "vega-virtual-device"',
+    "set frontmost of vvd to true",
+    "delay 0.05",
+    `key code ${macKeyCode}`,
+    "end tell",
+  ].join("\n");
+  try {
+    await execFileAsync("osascript", ["-e", script], { timeout: 5000 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("1002") || message.includes("not allowed")) {
+      throw new Error(
+        "macOS blocked the keystroke relay. Grant Accessibility permission to " +
+          "your terminal (System Settings → Privacy & Security → Accessibility), " +
+          "then retry. Alternatively set PORTHOLE_VEGA_INPUT=qmp.",
+      );
+    }
+    if (message.includes("can't get process") || message.includes("(-1719)")) {
+      throw new Error(
+        "The Vega Virtual Device GUI window is not running. Start it with " +
+          "`vega virtual-device start` (GUI mode) — the keystroke relay needs it.",
+      );
+    }
+    throw new Error(`Keystroke relay failed: ${message}`);
   }
 }
 

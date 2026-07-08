@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -878,6 +880,22 @@ function sessionControlOpts(opts: { port?: string; device?: string }): {
 }
 
 async function startVegaSession(opts: StartOptions): Promise<void> {
+  // The Vega engine talks to sockets that vanish whenever the VVD restarts;
+  // a stray rejection must degrade the stream, not kill the server. Keep a
+  // trail for diagnosis (the spike had silent daemon deaths).
+  const crashLog = join(tmpdir(), "porthole", "vega-server-errors.log");
+  const logSurvivableError = (kind: string, error: unknown) => {
+    const line = `${new Date().toISOString()} ${kind}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`;
+    void appendFile(crashLog, line).catch(() => undefined);
+    console.error(`porthole(vega): survived ${kind}: ${String(error).slice(0, 200)}`);
+  };
+  process.on("uncaughtException", (error) =>
+    logSurvivableError("uncaughtException", error),
+  );
+  process.on("unhandledRejection", (error) =>
+    logSurvivableError("unhandledRejection", error),
+  );
+
   if (!opts.quiet) console.log("Checking the Vega Virtual Device...");
   await ensureVegaVirtualDevice();
 
