@@ -11,5 +11,7 @@ describeIfEmulator("screen diff integration", () => {
 
     expect(result.ok).toBe(true);
     expect(result.mismatchRatio).toBe(0);
-  });
+  }, // Screenshot round-trips on the software-rendered CI emulator routinely
+  // exceed vitest's 5s default.
+  60_000);
 });
