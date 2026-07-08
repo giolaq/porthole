@@ -17,13 +17,22 @@ const assetUrl = `https://github.com/Genymobile/scrcpy/releases/download/v${late
 const sha256 = await sha256Url(assetUrl);
 const updated = source
   .replace(
-    /export const SCRCPY_VERSION = "[^"]+";/,
+    /export const SCRCPY_VERSION =\s*(?:\n\s*)?"[^"]+";/,
     `export const SCRCPY_VERSION = "${latest.version}";`,
   )
   .replace(
-    /export const SCRCPY_SHA256 =\n  "[^"]+";/,
+    /export const SCRCPY_SHA256 =\s*(?:\n\s*)?"[^"]+";/,
     `export const SCRCPY_SHA256 =\n  "${sha256}";`,
   );
+
+// A silent no-op replacement would bump the version while keeping the old
+// checksum — verify both landed before writing anything.
+if (
+  matchConst(updated, "SCRCPY_VERSION") !== latest.version ||
+  matchConst(updated, "SCRCPY_SHA256") !== sha256
+) {
+  throw new Error("Pin replacement failed — download script layout changed?");
+}
 
 await writeFile(scriptPath, updated);
 console.log(`scrcpy ${currentVersion} (${currentSha}) -> ${latest.version} (${sha256})`);
@@ -38,11 +47,14 @@ function matchConst(input, name) {
 }
 
 async function latestScrcpyRelease() {
+  const headers = { "User-Agent": "porthole-scrcpy-pin-check" };
+  // Unauthenticated api.github.com is rate-limited per shared runner IP.
+  if (process.env.GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
   const response = await fetch(
     "https://api.github.com/repos/Genymobile/scrcpy/releases/latest",
-    {
-      headers: { "User-Agent": "porthole-scrcpy-pin-check" },
-    },
+    { headers },
   );
   if (!response.ok) throw new Error(`GitHub release lookup failed: ${response.status}`);
   const body = await response.json();

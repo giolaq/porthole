@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   unit:
@@ -22,7 +23,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run test
       - run: npm run test:coverage
       - run: npm run lint
       - run: npm run typecheck
@@ -41,7 +41,9 @@ jobs:
   android-integration:
     name: Android integration
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    # Emulator boots are slow and quota-hungry: run on main pushes and manual
+    # dispatch, not on every PR iteration.
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,6 +52,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # Playwright browsers are not part of npm ci; the e2e suite needs a
+      # branded Chrome for H.264 WebCodecs support.
+      - run: npx playwright install --with-deps chrome
       - uses: ./
         id: porthole
         with:

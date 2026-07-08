@@ -19,6 +19,16 @@ jobs:
           node-version: 22
       - id: pin
         run: node .github/scripts/check-scrcpy-pin.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # PRs opened with GITHUB_TOKEN do not trigger CI, so verify the bumped
+      # pin right here: the download script re-fetches and checks the sha.
+      - name: Verify bumped pin downloads and matches
+        if: steps.pin.outputs.changed == 'true'
+        run: |
+          rm -f packages/porthole/assets/scrcpy-server
+          node packages/porthole/scripts/download-scrcpy-server.mjs
+          test -f packages/porthole/assets/scrcpy-server
       - name: Open scrcpy pin PR
         if: steps.pin.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6

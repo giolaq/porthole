@@ -21,6 +21,11 @@ interface PreparedSample {
 }
 
 const DEFAULT_TIMESCALE = 90_000;
+// A late-joining recorder receives the server's cached keyframe whose PTS can
+// be minutes older than the live stream; unclamped, that gap becomes one
+// giant frozen first frame. No real inter-frame gap should exceed this.
+const MAX_SAMPLE_DURATION_S = 1;
+const MIN_SAMPLE_DURATION_S = 1 / 240;
 
 export function createMp4(track: Mp4VideoTrack): Uint8Array {
   if (track.samples.length === 0) throw new Error("Cannot create MP4 without samples.");
@@ -114,9 +119,13 @@ function prepareSamples(
           ? timestampSeconds(sample.timestamp) -
             timestampSeconds(previousSample(samples, index).timestamp)
           : 1 / 30;
+    const clampedSeconds = Math.min(
+      MAX_SAMPLE_DURATION_S,
+      Math.max(MIN_SAMPLE_DURATION_S, durationSeconds),
+    );
     return {
       data: annexBToAvcc(sample.data),
-      duration: Math.max(1, Math.round(durationSeconds * timescale)),
+      duration: Math.max(1, Math.round(clampedSeconds * timescale)),
       keyframe: sample.keyframe,
       offset: 0,
     };

@@ -557,7 +557,7 @@ program
 program
   .command("record <output>")
   .description("Record the current H.264 stream to an MP4 file")
-  .option("--duration <duration>", "Recording duration, e.g. 30s or 1500ms")
+  .option("--duration <duration>", "Recording duration, e.g. 30s or 1500ms (bare = ms)")
   .option("-p, --port <port>", "Session port")
   .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
@@ -618,11 +618,9 @@ program
   .option("-p, --port <port>", "Session port")
   .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
-  .action((opts: { port?: string; quiet?: boolean }) => {
+  .action((opts: { port?: string; device?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
-      const result = await getSessionJson("/api/focused", {
-        port: parseOptionalPort(opts.port),
-      });
+      const result = await getSessionJson("/api/focused", sessionControlOpts(opts));
       printResult(opts.quiet, result, JSON.stringify(result.response, null, 2));
     });
   });
@@ -1012,12 +1010,13 @@ function parseRatio(value: string, label: string): number {
 
 function parseDurationMs(value: string): number {
   const match = /^(\d+(?:\.\d+)?)(ms|s)?$/.exec(value);
-  if (!match) throw new Error("duration must look like 1500ms or 30s");
+  if (!match) throw new Error("duration must look like 1500ms, 30s, or 1500 (ms)");
   const amount = Number(match[1]);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("duration must be a positive number");
   }
-  return Math.round(amount * (match[2] === "ms" ? 1 : 1000));
+  // Bare numbers are milliseconds, matching every other --duration flag.
+  return Math.round(amount * (match[2] === "s" ? 1000 : 1));
 }
 
 function isScrollDirection(value: string): value is ScrollDirection {

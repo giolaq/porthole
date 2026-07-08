@@ -34,7 +34,7 @@ export function chooseDpadDirection(
   if (!target) throw new Error(`Target not found: ${describeQuery(targetQuery)}`);
   const focused = findFocused(tree);
   if (!focused) throw new Error("No focused node found.");
-  if (nodeMatches(focused, targetQuery)) return null;
+  if (focusedMatches(focused, targetQuery)) return null;
 
   const from = nodeCenter(focused);
   const to = nodeCenter(target);
@@ -64,7 +64,7 @@ export async function focusOn(
     if (!findFocusableMatch(tree, targetQuery)) {
       throw new Error(`Target not found: ${describeQuery(targetQuery)}`);
     }
-    if (focused && nodeMatches(focused, targetQuery)) {
+    if (focused && focusedMatches(focused, targetQuery)) {
       if (opts.select) {
         await sendRemote("select");
       }
@@ -116,6 +116,13 @@ export function remoteButtonKeycode(button: RemoteButton): number {
 
 function findFocusableMatch(tree: UiNode[], query: FocusQuery): UiNode | null {
   return flatten(tree).find((node) => node.enabled && nodeMatches(node, query)) ?? null;
+}
+
+// Leanback often focuses a card CONTAINER whose title/text lives on a child
+// node — arrival must count when the query matches the focused node or any
+// of its descendants, not just the container itself.
+export function focusedMatches(focused: UiNode, query: FocusQuery): boolean {
+  return [focused, ...flatten(focused.children)].some((node) => nodeMatches(node, query));
 }
 
 function nodeMatches(node: UiNode, query: FocusQuery): boolean {

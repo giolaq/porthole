@@ -7,5 +7,8 @@ export default defineConfig({
     baseURL: process.env.PORTHOLE_URL ?? "http://127.0.0.1:3200",
     trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
+    // Bundled Chromium lacks proprietary codecs; H.264 WebCodecs decode
+    // needs branded Chrome (installed in CI via `playwright install chrome`).
+    channel: "chrome",
   },
 });

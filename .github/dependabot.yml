@@ -1,15 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: monthly
-    groups:
-      npm-dependencies:
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "@yume-chan/*"
+  # One entry per ecosystem+directory — Dependabot rejects duplicates, so the
+  # @yume-chan fast lane is a group here, not a second npm entry.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -18,3 +10,12 @@ updates:
       yume-chan:
         patterns:
           - "@yume-chan/*"
+      npm-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@yume-chan/*"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

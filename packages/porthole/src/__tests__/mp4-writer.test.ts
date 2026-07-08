@@ -16,6 +16,35 @@ describe("MP4 writer", () => {
     expect(Array.from(annexBToAvcc(idr).slice(0, 4))).toEqual([0, 0, 0, 4]);
   });
 
+  it("clamps the stale cached-keyframe gap so duration stays sane", () => {
+    // A late-joining recorder's first sample is the server's cached keyframe,
+    // whose PTS can be minutes older than the live frames that follow. The
+    // ~216s gap here must not become a 216-second frozen first frame.
+    const mp4 = createMp4({
+      width: 320,
+      height: 180,
+      config: concat([sps, pps]),
+      samples: [
+        { data: idr, timestamp: 225_994_004, keyframe: true },
+        {
+          data: Uint8Array.of(0, 0, 0, 1, 0x41, 0x9a),
+          timestamp: 441_894_718,
+          keyframe: false,
+        },
+        {
+          data: Uint8Array.of(0, 0, 0, 1, 0x41, 0x9b),
+          timestamp: 441_928_051,
+          keyframe: false,
+        },
+      ],
+    });
+
+    const { duration, timescale } = readMvhd(mp4);
+    const seconds = duration / timescale;
+    expect(seconds).toBeGreaterThan(0.5);
+    expect(seconds).toBeLessThan(3);
+  });
+
   it("writes ftyp, mdat, and moov boxes", () => {
     const mp4 = createMp4({
       width: 320,
@@ -36,6 +65,17 @@ describe("MP4 writer", () => {
     expect(hasMp4Box(mp4, "moov")).toBe(true);
   });
 });
+
+function readMvhd(mp4: Uint8Array): { timescale: number; duration: number } {
+  const type = new TextEncoder().encode("mvhd");
+  for (let i = 0; i < mp4.byteLength - 24; i++) {
+    if (type.every((byte, j) => mp4[i + j] === byte)) {
+      const view = new DataView(mp4.buffer, mp4.byteOffset + i + 4);
+      return { timescale: view.getUint32(12), duration: view.getUint32(16) };
+    }
+  }
+  throw new Error("mvhd not found");
+}
 
 function concat(chunks: Uint8Array[]): Uint8Array {
   const result = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));

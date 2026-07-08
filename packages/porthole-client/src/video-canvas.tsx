@@ -65,6 +65,12 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastConfigRef = useRef<Uint8Array | null>(null);
 
+  // A new socket may stream a different device — its cached SPS/PPS must not
+  // seed the decoder (wrong parameter sets produce garbage frames).
+  useEffect(() => {
+    lastConfigRef.current = null;
+  }, [ws]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !ws) return;

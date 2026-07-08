@@ -30,12 +30,16 @@ export function App() {
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Aborted on device switch so a slow response for the previous device
+    // cannot overwrite the newly selected device's state.
+    const aborter = new AbortController();
+
     const pollHealth = async () => {
       try {
         const query = selectedDeviceId
           ? `?device=${encodeURIComponent(selectedDeviceId)}`
           : "";
-        const res = await fetch(`/health${query}`);
+        const res = await fetch(`/health${query}`, { signal: aborter.signal });
         const data = (await res.json()) as HealthResponse;
         setHealth(data);
         if (data.status === "ok") {
@@ -43,20 +47,29 @@ export function App() {
           setVideoMode(selectVideoMode(data.preferredVideoMode));
         }
       } catch {
-        setHealth(null);
+        if (!aborter.signal.aborted) setHealth(null);
       }
     };
 
     const pollDevices = async () => {
       try {
-        const res = await fetch("/api/devices");
+        const res = await fetch("/api/devices", { signal: aborter.signal });
         const nextDevices = (await res.json()) as Device[];
         setDevices(nextDevices);
-        if (!selectedDeviceId) {
-          setSelectedDeviceId(nextDevices[0]?.serial ?? null);
+        // Note: no auto-select here. With no explicit selection the server's
+        // default device is used everywhere (and the picker falls back to
+        // health.device), so auto-selecting would only force a WS reconnect
+        // and decoder restart on every page load. If the explicitly selected
+        // device disappears (emulator killed), fall back to the default.
+        if (
+          selectedDeviceId &&
+          nextDevices.length > 0 &&
+          !nextDevices.some((device) => device.serial === selectedDeviceId)
+        ) {
+          setSelectedDeviceId(null);
         }
       } catch {
-        setDevices([]);
+        if (!aborter.signal.aborted) setDevices([]);
       }
     };
 
@@ -65,6 +78,7 @@ export function App() {
     const interval = setInterval(() => void pollHealth(), 3000);
     const deviceInterval = setInterval(() => void pollDevices(), 5000);
     return () => {
+      aborter.abort();
       clearInterval(interval);
       clearInterval(deviceInterval);
     };

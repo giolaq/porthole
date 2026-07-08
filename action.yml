@@ -98,39 +98,12 @@ runs:
         profile: ${{ steps.profile.outputs.hardware-profile }}
         avd-name: ${{ inputs.avd-name }}
         emulator-port: 5554
-        script: |
-          set -euo pipefail
-          porthole_cli="$RUNNER_TEMP/porthole-cli"
-          printf '#!/usr/bin/env bash\nset -euo pipefail\n%s "$@"\n' "$PORTHOLE_COMMAND" > "$porthole_cli"
-          chmod +x "$porthole_cli"
-          export PORTHOLE_CLI="$porthole_cli"
-          session_json="$RUNNER_TEMP/porthole-session.json"
-          "$PORTHOLE_CLI" start --device emulator-5554 --detach -q --no-preview -p "$PORTHOLE_PORT" > "$session_json"
-          node - "$session_json" <<'NODE'
-          const fs = require("node:fs");
-          const session = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          const output = [
-            `url=${session.url}`,
-            `serial=${session.serial}`,
-            `port=${session.port}`,
-          ].join("\n") + "\n";
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, output);
-          fs.appendFileSync(
-            process.env.GITHUB_ENV,
-            [
-              `PORTHOLE_URL=${session.url}`,
-              `PORTHOLE_SERIAL=${session.serial}`,
-              `PORTHOLE_PORT=${session.port}`,
-            ].join("\n") + "\n",
-          );
-          NODE
-          set +e
-          bash -euo pipefail <<'PORTHOLE_USER_SCRIPT'
-          ${{ inputs.script }}
-          PORTHOLE_USER_SCRIPT
-          status=$?
-          "$PORTHOLE_CLI" kill -q || true
-          exit "$status"
+        # The emulator runner executes each script line in a separate shell —
+        # multi-line state (variables, heredocs) does not survive. Everything
+        # lives in porthole-action.sh, invoked as one line.
+        script: bash "$PORTHOLE_ACTION_SCRIPT"
       env:
+        PORTHOLE_ACTION_SCRIPT: ${{ github.action_path }}/.github/scripts/porthole-action.sh
         PORTHOLE_COMMAND: ${{ inputs.porthole-command }}
         PORTHOLE_PORT: ${{ inputs.port }}
+        PORTHOLE_USER_SCRIPT: ${{ inputs.script }}

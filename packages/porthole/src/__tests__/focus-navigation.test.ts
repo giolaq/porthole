@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { chooseDpadDirection } from "../focus-navigation.js";
-import { parseUiAutomatorXml } from "../ui-tree.js";
+import { chooseDpadDirection, focusedMatches } from "../focus-navigation.js";
+import { findFocused, parseUiAutomatorXml } from "../ui-tree.js";
 
 describe("chooseDpadDirection", () => {
   it("moves across a grid toward the target", () => {
@@ -44,6 +44,24 @@ describe("chooseDpadDirection", () => {
     const tree = parseUiAutomatorXml(xmlForNodes([node("Library", 0, 0, true)]));
 
     expect(chooseDpadDirection(tree, { text: "Library" })).toBeNull();
+  });
+
+  it("treats focus on a card container as arrival when a child holds the title", () => {
+    // Leanback focuses the card CONTAINER; the title text lives on a child.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<hierarchy>
+  <node text="" class="root" enabled="true" bounds="[0,0][400,400]">
+    <node text="" class="CardView" enabled="true" focusable="true" focused="true" bounds="[0,0][200,200]">
+      <node text="Catastrophe" class="TextView" enabled="true" bounds="[10,150][190,190]" />
+    </node>
+  </node>
+</hierarchy>`;
+    const tree = parseUiAutomatorXml(xml);
+    const focused = findFocused(tree);
+    if (!focused) throw new Error("fixture must contain a focused node");
+
+    expect(focusedMatches(focused, { text: "Catastrophe" })).toBe(true);
+    expect(chooseDpadDirection(tree, { text: "Catastrophe" })).toBeNull();
   });
 });
 
