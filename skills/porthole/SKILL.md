@@ -52,6 +52,7 @@ iOS, physical Android devices, or audio.
 
    ```sh
    porthole remote dpad_down
+   porthole focus-on "Library" --select
    porthole remote select
    porthole remote back
    ```
@@ -79,8 +80,9 @@ porthole wait-for "Continue" --timeout 10000 -q
 porthole open-url "example://deep/link"
 ```
 
-For TV AVDs, use `remote`, then `focused`, then assert the focused node's
-`text`, `resourceId`, or `contentDesc`. For phones, `find_element` is exposed
+For TV AVDs, prefer `focus-on` / `focus_on` for named destinations. Use
+`remote`, then `focused`, then assert the focused node's `text`, `resourceId`,
+or `contentDesc` for manual focus work. For phones, `find_element` is exposed
 through MCP and can tap the center of a matching node.
 
 Note: `focused` is a D-pad/leanback concept. On phone profiles it usually
@@ -98,7 +100,7 @@ When MCP is configured, use:
 - `assert_screen` when a baseline image is available
 - `dump_ui`, `get_focused`, and `wait_for` for semantic assertions
 - `get_crashes` after risky actions
-- `remote` for TV navigation
+- `focus_on` or `remote` for TV navigation
 - `tap`, `swipe`, `scroll`, and `long_press` only for phone profiles
 - `read_logcat` to diagnose crashes or focus issues
 - `install_apk` to load a freshly built APK

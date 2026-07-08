@@ -603,6 +603,33 @@ program
   });
 
 program
+  .command("focus-on <text>")
+  .description("Move TV D-pad focus to matching text")
+  .option("--select", "Press select after focusing")
+  .option("--max-steps <count>", "Maximum D-pad steps", "15")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action(
+    (
+      text: string,
+      opts: { select?: boolean; maxSteps: string; port?: string; quiet?: boolean },
+    ) => {
+      void runCliAction(opts, async () => {
+        const result = await postSessionJson(
+          "/api/focus_on",
+          {
+            text,
+            select: opts.select === true,
+            maxSteps: parsePositiveInteger(opts.maxSteps, "max-steps"),
+          },
+          { port: parseOptionalPort(opts.port) },
+        );
+        printResult(opts.quiet, result, `Focused ${text}`);
+      });
+    },
+  );
+
+program
   .command("dump-ui")
   .description("Dump the Android accessibility hierarchy")
   .option("-p, --port <port>", "Session port")

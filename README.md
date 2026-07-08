@@ -93,6 +93,7 @@ npx portholejs kill -q
 | `porthole screenshot [-o file.png]`  | Save a PNG screenshot                               |
 | `porthole assert-screen <png>`       | Compare the current screen with a PNG baseline      |
 | `porthole focused`                   | Print the currently focused UI node                 |
+| `porthole focus-on <text>`           | Move TV D-pad focus to matching text                |
 | `porthole dump-ui [--filter text]`   | Dump the Android UI hierarchy                       |
 | `porthole wait-for <text>`           | Wait until UI text appears                          |
 | `porthole open-url <url>`            | Open a URL or Android deep link                     |
@@ -153,8 +154,8 @@ claude mcp add porthole -- npx portholejs mcp
 Useful MCP tools: `list_devices`, `boot_device`, `wait_for_boot`,
 `attach_device`, `tap`, `swipe`, `long_press`, `scroll`, `key`, `remote`,
 `type_text`, `screenshot`, `assert_screen`,
-`dump_ui`, `get_focused`, `find_element`, `wait_for`, `open_url`, `stop_app`,
-`clear_app`, `get_crashes`, `read_logcat`, and `install_apk`.
+`dump_ui`, `get_focused`, `focus_on`, `find_element`, `wait_for`, `open_url`,
+`stop_app`, `clear_app`, `get_crashes`, `read_logcat`, and `install_apk`.
 
 ## Agent Skill
 

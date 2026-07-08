@@ -15,6 +15,7 @@ import { MjpegPoller } from "./mjpeg.js";
 import { clearApp, openUrl, stopApp } from "../adb-actions.js";
 import { parseCrashes } from "../crashes.js";
 import { dumpUi, findElement, getFocusedNode, waitForUiText } from "../ui-tree.js";
+import { focusOn } from "../focus-navigation.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -204,6 +205,36 @@ export function createHttpServer(opts: HttpServerOptions) {
     if (url === "/api/focused" && req.method === "GET") {
       await withSerial(res, getDevice, async (serial) => {
         await sendJson(res, 200, { ok: true, node: await getFocusedNode(serial) });
+      });
+      return;
+    }
+
+    if (url === "/api/focus_on" && req.method === "POST") {
+      await withSerial(res, getDevice, async (serial) => {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        const text = typeof body.text === "string" ? body.text : undefined;
+        const resourceId =
+          typeof body.resourceId === "string" ? body.resourceId : undefined;
+        const contentDesc =
+          typeof body.contentDesc === "string" ? body.contentDesc : undefined;
+        if (!text && !resourceId && !contentDesc) {
+          throw new Error("text, resourceId, or contentDesc is required.");
+        }
+        const maxSteps =
+          typeof body.maxSteps === "number" && Number.isInteger(body.maxSteps)
+            ? body.maxSteps
+            : undefined;
+        const result = await focusOn(
+          serial,
+          { text, resourceId, contentDesc },
+          async (button) => {
+            const event = { kind: "remote" as const, button };
+            if (handleInput) await handleInput(event);
+            else await getEngine()?.sendInput(event);
+          },
+          { select: body.select === true, maxSteps },
+        );
+        await sendJson(res, 200, { ok: true, result });
       });
       return;
     }

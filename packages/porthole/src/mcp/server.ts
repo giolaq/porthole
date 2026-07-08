@@ -15,6 +15,7 @@ import { dumpUi, findElement, getFocusedNode, waitForUiText } from "../ui-tree.j
 import { assertInputAllowed } from "../input-validation.js";
 import type { DeviceProfile } from "../profiles.js";
 import { comparePngScreens, parseDiffRegion } from "../screen-diff.js";
+import { focusOn } from "../focus-navigation.js";
 
 let engine: Engine | null = null;
 let activeSerial: string | null = null;
@@ -450,6 +451,42 @@ export async function startMcpServer(): Promise<void> {
           },
         ],
       };
+    },
+  );
+
+  server.tool(
+    "focus_on",
+    "Move Android TV D-pad focus to a matching UI node",
+    {
+      text: z.string().optional().describe("Text substring to focus"),
+      resourceId: z.string().optional().describe("Resource id substring to focus"),
+      contentDesc: z.string().optional().describe("Content description substring"),
+      select: z.boolean().optional().describe("Press select after focus lands"),
+      maxSteps: z.number().int().positive().optional().describe("Maximum D-pad steps"),
+    },
+    async ({ text, resourceId, contentDesc, select, maxSteps }) => {
+      if (!engine || !activeSerial) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      if (!text && !resourceId && !contentDesc) {
+        return {
+          content: [
+            { type: "text", text: "text, resourceId, or contentDesc is required." },
+          ],
+        };
+      }
+      const activeEngine = engine;
+      const result = await focusOn(
+        activeSerial,
+        { text, resourceId, contentDesc },
+        (button) => activeEngine.sendInput({ kind: "remote", button }),
+        { select, maxSteps },
+      );
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
     },
   );
 
