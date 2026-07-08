@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -13,6 +14,7 @@ import { parseCrashes } from "../crashes.js";
 import { dumpUi, findElement, getFocusedNode, waitForUiText } from "../ui-tree.js";
 import { assertInputAllowed } from "../input-validation.js";
 import type { DeviceProfile } from "../profiles.js";
+import { comparePngScreens, parseDiffRegion } from "../screen-diff.js";
 
 let engine: Engine | null = null;
 let activeSerial: string | null = null;
@@ -328,6 +330,44 @@ export async function startMcpServer(): Promise<void> {
             type: "image",
             data: Buffer.from(png).toString("base64"),
             mimeType: "image/png",
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "assert_screen",
+    "Compare the current screenshot against a PNG baseline",
+    {
+      baselinePath: z.string().describe("Path to a PNG baseline image"),
+      threshold: z.number().min(0).max(1).optional().describe("Maximum mismatch ratio"),
+      region: z.string().optional().describe("Optional pixel region as x,y,w,h"),
+    },
+    async ({ baselinePath, threshold, region }) => {
+      if (!engine) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      const result = comparePngScreens(
+        await readFile(baselinePath),
+        await engine.screenshot(),
+        {
+          thresholdRatio: threshold,
+          region: region === undefined ? undefined : parseDiffRegion(region),
+        },
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: result.ok,
+              mismatchRatio: result.mismatchRatio,
+            }),
           },
         ],
       };

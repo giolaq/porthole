@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -31,6 +32,7 @@ import { runCliAction } from "./cli-errors.js";
 import { runDoctor } from "./doctor.js";
 import { ensurePortFree } from "./port-check.js";
 import { scrollGesture, type ScrollDirection } from "./gesture.js";
+import { comparePngScreens, parseDiffRegion } from "./screen-diff.js";
 
 const program = new Command();
 
@@ -507,6 +509,54 @@ program
   });
 
 program
+  .command("assert-screen <baseline>")
+  .description("Compare the current screenshot against a PNG baseline")
+  .option("--threshold <ratio>", "Maximum mismatch ratio", "0.02")
+  .option("--diff <file>", "Write a PNG diff image")
+  .option("--region <x,y,w,h>", "Compare a pixel region")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action(
+    (
+      baseline: string,
+      opts: {
+        threshold: string;
+        diff?: string;
+        region?: string;
+        port?: string;
+        quiet?: boolean;
+      },
+    ) => {
+      void runCliAction(opts, async () => {
+        const { session, png } = await fetchSessionScreenshot({
+          port: parseOptionalPort(opts.port),
+        });
+        const result = comparePngScreens(await readFile(baseline), png, {
+          thresholdRatio: parseRatio(opts.threshold, "threshold"),
+          region: opts.region === undefined ? undefined : parseDiffRegion(opts.region),
+        });
+        if (opts.diff && result.diffPng) {
+          await writeFile(opts.diff, result.diffPng);
+        }
+        const payload = {
+          ok: result.ok,
+          mismatchRatio: result.mismatchRatio,
+          diffPath: opts.diff,
+          session,
+        };
+        printResult(
+          opts.quiet,
+          payload,
+          result.ok
+            ? `Screen matched (${formatRatio(result.mismatchRatio)})`
+            : `Screen differed (${formatRatio(result.mismatchRatio)})`,
+        );
+        if (!result.ok) process.exitCode = 1;
+      });
+    },
+  );
+
+program
   .command("rotate <orientation>")
   .description("Rotate a phone session: portrait, landscape, left, or right")
   .option("-p, --port <port>", "Session port")
@@ -791,8 +841,20 @@ function parsePositiveInteger(value: string, label: string): number {
   return parsed;
 }
 
+function parseRatio(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new Error(`${label} must be a number in 0..1`);
+  }
+  return parsed;
+}
+
 function isScrollDirection(value: string): value is ScrollDirection {
   return value === "up" || value === "down" || value === "left" || value === "right";
+}
+
+function formatRatio(value: number): string {
+  return `${(value * 100).toFixed(2)}% mismatch`;
 }
 
 function printResult(quiet: boolean | undefined, json: unknown, text: string): void {

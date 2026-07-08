@@ -34,6 +34,7 @@ iOS, physical Android devices, or audio.
 
    ```sh
    porthole screenshot -q
+   porthole assert-screen baseline.png --threshold 0.02 -q
    ```
 
 4. Drive input:
@@ -94,6 +95,7 @@ When MCP is configured, use:
 - `boot_device` and `wait_for_boot` for cold starts
 - `attach_device` before input and screenshots
 - `screenshot` after each meaningful input step
+- `assert_screen` when a baseline image is available
 - `dump_ui`, `get_focused`, and `wait_for` for semantic assertions
 - `get_crashes` after risky actions
 - `remote` for TV navigation
