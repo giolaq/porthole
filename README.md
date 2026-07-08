@@ -157,8 +157,7 @@ Useful MCP tools: `list_devices`, `boot_device`, `wait_for_boot`,
 
 ## Agent Skill
 
-Porthole ships a [Claude Code agent skill](https://code.claude.com/docs/en/skills)
-(`skills/porthole/`) that teaches agents the full workflow: doctor triage,
+Porthole ships an agent skill (`skills/porthole/`) that teaches agents the full workflow: doctor triage,
 boot/attach, semantic UI assertions, TV navigation, and cleanup.
 
 Install it by copying the skill directory into your skills folder — for the
