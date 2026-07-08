@@ -30,6 +30,17 @@ iOS, physical Android devices, or audio.
    porthole start <AVD_NAME> --detach -q
    ```
 
+   In GitHub Actions, prefer the bundled repository action so the emulator,
+   Porthole server, and smoke script share one lifecycle:
+
+   ```yaml
+   - uses: giolaq/porthole@main
+     with:
+       profile: tv
+       script: |
+         "$PORTHOLE_CLI" focus-on "Library" --select -q -p "$PORTHOLE_PORT"
+   ```
+
 3. Verify the screen:
 
    ```sh

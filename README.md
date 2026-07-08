@@ -182,6 +182,35 @@ From a clone of this repository, copy `skills/porthole` instead. Claude Code
 picks the skill up automatically; ask it to "test my app on the Android
 emulator" and it will follow the Porthole workflow.
 
+## GitHub Action
+
+Porthole ships an in-repo GitHub Action for CI smoke tests. It wraps
+`reactivecircus/android-emulator-runner`, starts `npx --yes portholejs` against
+the booted emulator, and runs your script while the emulator is alive.
+
+```yaml
+jobs:
+  tv-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: porthole
+        uses: giolaq/porthole@main
+        with:
+          avd-name: porthole-tv
+          api-level: "35"
+          profile: tv
+          script: |
+            mkdir -p artifacts
+            "$PORTHOLE_CLI" focus-on "Library" --select -q -p "$PORTHOLE_PORT"
+            "$PORTHOLE_CLI" screenshot -o artifacts/library.png -q -p "$PORTHOLE_PORT"
+```
+
+The action exposes `url`, `serial`, and `port` outputs, and also sets
+`PORTHOLE_URL`, `PORTHOLE_SERIAL`, `PORTHOLE_PORT`, and `PORTHOLE_CLI` for the
+smoke script. See `docs/github-action-example.yml` for a fuller `focus-on` /
+`assert-screen` workflow that uploads screenshot artifacts on failure.
+
 ## Browser UI
 
 The preview shows the active device, stream status, screenshots, copy-to-clipboard,

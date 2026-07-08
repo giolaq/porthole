@@ -1,0 +1,33 @@
+name: Porthole smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  tv-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: porthole
+        uses: giolaq/porthole@main
+        with:
+          avd-name: porthole-tv
+          api-level: "35"
+          profile: tv
+          script: |
+            mkdir -p artifacts
+            "$PORTHOLE_CLI" focus-on "Library" --select -q -p "$PORTHOLE_PORT"
+            "$PORTHOLE_CLI" screenshot -o artifacts/library.png -q -p "$PORTHOLE_PORT"
+            "$PORTHOLE_CLI" assert-screen test/baselines/library.png \
+              --threshold 0.03 \
+              --diff artifacts/library-diff.png \
+              -q \
+              -p "$PORTHOLE_PORT"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: porthole-screenshots
+          path: artifacts/

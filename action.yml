@@ -1,0 +1,136 @@
+name: Porthole Android Emulator
+description: Boot an Android emulator, start Porthole, and run a smoke script.
+branding:
+  icon: smartphone
+  color: blue
+inputs:
+  avd-name:
+    description: Name to give the CI AVD.
+    required: false
+    default: porthole-ci
+  api-level:
+    description: Android API level for the emulator image.
+    required: false
+    default: "35"
+  profile:
+    description: phone, tv, or an Android hardware profile id.
+    required: false
+    default: phone
+  hardware-profile:
+    description: Optional Android hardware profile id override.
+    required: false
+    default: ""
+  port:
+    description: Porthole HTTP port.
+    required: false
+    default: "3200"
+  porthole-command:
+    description: Command used to run Porthole.
+    required: false
+    default: npx --yes portholejs
+  script:
+    description: Commands to run while the emulator and Porthole session are alive.
+    required: false
+    default: |
+      "$PORTHOLE_CLI" screenshot -q -p "$PORTHOLE_PORT"
+outputs:
+  url:
+    description: Porthole browser/control URL.
+    value: ${{ steps.porthole.outputs.url }}
+  serial:
+    description: Android emulator serial.
+    value: ${{ steps.porthole.outputs.serial }}
+  port:
+    description: Porthole HTTP port.
+    value: ${{ steps.porthole.outputs.port }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve emulator profile
+      id: profile
+      shell: bash
+      env:
+        INPUT_PROFILE: ${{ inputs.profile }}
+        INPUT_HARDWARE_PROFILE: ${{ inputs.hardware-profile }}
+      run: |
+        set -euo pipefail
+        case "$INPUT_PROFILE" in
+          tv)
+            target="android-tv"
+            hardware_profile="${INPUT_HARDWARE_PROFILE:-tv_1080p}"
+            ;;
+          phone)
+            target="google_apis"
+            hardware_profile="${INPUT_HARDWARE_PROFILE:-pixel_7_pro}"
+            ;;
+          *)
+            target="google_apis"
+            hardware_profile="${INPUT_HARDWARE_PROFILE:-$INPUT_PROFILE}"
+            ;;
+        esac
+        {
+          echo "target=$target"
+          echo "hardware-profile=$hardware_profile"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Enable Linux KVM
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Run emulator and Porthole
+      id: porthole
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: ${{ inputs.api-level }}
+        target: ${{ steps.profile.outputs.target }}
+        arch: x86_64
+        profile: ${{ steps.profile.outputs.hardware-profile }}
+        avd-name: ${{ inputs.avd-name }}
+        emulator-port: 5554
+        script: |
+          set -euo pipefail
+          porthole_cli="$RUNNER_TEMP/porthole-cli"
+          printf '#!/usr/bin/env bash\nset -euo pipefail\n%s "$@"\n' "$PORTHOLE_COMMAND" > "$porthole_cli"
+          chmod +x "$porthole_cli"
+          export PORTHOLE_CLI="$porthole_cli"
+          session_json="$RUNNER_TEMP/porthole-session.json"
+          "$PORTHOLE_CLI" start --device emulator-5554 --detach -q --no-preview -p "$PORTHOLE_PORT" > "$session_json"
+          node - "$session_json" <<'NODE'
+          const fs = require("node:fs");
+          const session = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const output = [
+            `url=${session.url}`,
+            `serial=${session.serial}`,
+            `port=${session.port}`,
+          ].join("\n") + "\n";
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, output);
+          fs.appendFileSync(
+            process.env.GITHUB_ENV,
+            [
+              `PORTHOLE_URL=${session.url}`,
+              `PORTHOLE_SERIAL=${session.serial}`,
+              `PORTHOLE_PORT=${session.port}`,
+            ].join("\n") + "\n",
+          );
+          NODE
+          set +e
+          bash -euo pipefail <<'PORTHOLE_USER_SCRIPT'
+          ${{ inputs.script }}
+          PORTHOLE_USER_SCRIPT
+          status=$?
+          "$PORTHOLE_CLI" kill -q || true
+          exit "$status"
+      env:
+        PORTHOLE_COMMAND: ${{ inputs.porthole-command }}
+        PORTHOLE_PORT: ${{ inputs.port }}

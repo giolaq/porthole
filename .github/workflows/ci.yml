@@ -49,13 +49,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: reactivecircus/android-emulator-runner@v2
+      - run: npm run build
+      - uses: ./
+        id: porthole
         with:
+          avd-name: porthole-ci
           api-level: 35
-          target: google_apis
-          arch: x86_64
+          profile: phone
+          porthole-command: node packages/porthole/dist/cli.js
           script: |
-            npm run build
-            npx porthole start --device emulator-5554 --detach -q --no-preview
             PORTHOLE_EMU=1 npm run test
             PORTHOLE_E2E=1 npm run test:e2e
