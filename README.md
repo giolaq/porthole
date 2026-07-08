@@ -15,7 +15,8 @@ A window into your Android emulator — `npx portholejs`.
 
 Porthole boots or attaches to Android phone and TV AVDs, streams them to a browser,
 and forwards touch, keyboard, D-pad remote, screenshots, logcat, and file drops
-through one local tool. It is the Android sibling of
+through one local tool. It also has experimental support for the
+**Amazon Fire TV Vega simulator**. It is the Android sibling of
 [serve-sim](https://github.com/EvanBacon/serve-sim).
 
 ## Quick Start
@@ -162,6 +163,7 @@ Common options:
 | `--no-preview`          | Do not open the browser automatically                   |
 | `--detach`              | Start the preview server in the background              |
 | `--mjpeg`               | Force MJPEG screenshot polling                          |
+| `--vega`                | Attach to the Amazon Fire TV Vega virtual device        |
 | `-q, --quiet`           | Emit one JSON object/array on stdout                    |
 | `--max-size <px>`       | Maximum scrcpy stream dimension                         |
 | `--max-fps <fps>`       | Maximum scrcpy FPS                                      |
@@ -179,6 +181,34 @@ returns the session record with `url`, `pid`, `serial`, `avdName`, `port`, and
 commands return `{ "ok": true, "session": ... }`; `screenshot -q` returns
 `{ "ok": true, "path": "...", "session": ... }`. Pass `-d <serial>` to
 port-scoped commands when a server is streaming more than one emulator.
+
+## Fire TV Vega (experimental)
+
+Porthole can stream and control Amazon's [Vega OS](https://developer.amazon.com/docs/vega/0.21/overview.html)
+(Fire TV) virtual device — likely the only browser window into the Vega
+simulator today:
+
+```sh
+porthole start --vega
+```
+
+This attaches to a running Vega Virtual Device (or boots one headless via the
+`vega` CLI), streams it to the browser at ~3 fps (screenshot polling — Vega
+has no H.264 stream), and drives the full Fire TV remote (D-pad, OK, Back,
+Home, Menu, media keys) plus `porthole remote`, `screenshot`, and
+`assert-screen` headlessly.
+
+Requirements:
+
+- The [Vega SDK](https://developer.amazon.com/docs/vega/0.21/vega-installation-guide.html)
+  installed (`~/vega/sdk/...`, or point `PORTHOLE_VEGA_BIN` /
+  `PORTHOLE_VDA_BIN` at the `vega` and `vda` binaries)
+- Developer mode enabled on the virtual device (remote input is injected
+  through the on-device `inputd-cli`, exposed by the developer shell service)
+
+Not yet available on Vega: H.264/WebCodecs streaming, touch/gesture input
+(TV profile), `dump-ui`/`focused`/`focus-on`, and MP4 recording. The
+exploration notes live in `docs/VEGA_EXPLORATION.md`.
 
 ## MCP Setup
 

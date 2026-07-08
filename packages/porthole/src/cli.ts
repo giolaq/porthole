@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -31,6 +33,7 @@ import { readState, removeSession } from "./state.js";
 import { runCliAction } from "./cli-errors.js";
 import { runDoctor } from "./doctor.js";
 import { ensurePortFree } from "./port-check.js";
+import { ensureVegaVirtualDevice } from "./engine/vega-engine.js";
 import { scrollGesture, type ScrollDirection } from "./gesture.js";
 import { comparePngScreens, parseDiffRegion } from "./screen-diff.js";
 import { recordSession } from "./recording.js";
@@ -106,6 +109,7 @@ program
   .option("--host <host>", "Bind address", "127.0.0.1")
   .option("--no-preview", "Don't open browser")
   .option("--mjpeg", "MJPEG mode")
+  .option("--vega", "Attach to the Amazon Vega (Fire TV) virtual device")
   .option("--detach", "Run the preview server in the background")
   .option("--keep-alive", "Leave a Porthole-booted emulator running on exit")
   .option("--wipe-data", "Wipe emulator data before boot")
@@ -125,6 +129,7 @@ program
         host: string;
         preview: boolean;
         mjpeg?: boolean;
+        vega?: boolean;
         detach?: boolean;
         keepAlive?: boolean;
         wipeData?: boolean;
@@ -148,6 +153,11 @@ program
 
       if (opts.detach && process.env["PORTHOLE_DETACHED_CHILD"] !== "1") {
         await startDetached(avds ?? [], opts);
+        return;
+      }
+
+      if (opts.vega) {
+        await startVegaSession(opts);
         return;
       }
 
@@ -763,6 +773,7 @@ interface StartOptions {
   host: string;
   preview: boolean;
   mjpeg?: boolean;
+  vega?: boolean;
   detach?: boolean;
   keepAlive?: boolean;
   wipeData?: boolean;
@@ -868,6 +879,68 @@ function sessionControlOpts(opts: { port?: string; device?: string }): {
   };
 }
 
+async function startVegaSession(opts: StartOptions): Promise<void> {
+  // The Vega engine talks to sockets that vanish whenever the VVD restarts;
+  // a stray rejection must degrade the stream, not kill the server. Keep a
+  // trail for diagnosis (the spike had silent daemon deaths).
+  const crashLog = join(tmpdir(), "porthole", "vega-server-errors.log");
+  const logSurvivableError = (kind: string, error: unknown) => {
+    const line = `${new Date().toISOString()} ${kind}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`;
+    void appendFile(crashLog, line).catch(() => undefined);
+    console.error(`porthole(vega): survived ${kind}: ${String(error).slice(0, 200)}`);
+  };
+  process.on("uncaughtException", (error) =>
+    logSurvivableError("uncaughtException", error),
+  );
+  process.on("unhandledRejection", (error) =>
+    logSurvivableError("unhandledRejection", error),
+  );
+
+  if (!opts.quiet) console.log("Checking the Vega Virtual Device...");
+  await ensureVegaVirtualDevice();
+
+  const device: DeviceInfo = {
+    name: "Vega_Virtual_Device",
+    serial: "emulator-5554",
+    profile: "tv",
+    state: "running",
+  };
+
+  const session = new Session({
+    device,
+    port: parseInt(opts.port, 10),
+    host: opts.host,
+    detached: process.env["PORTHOLE_DETACHED_CHILD"] === "1",
+    // No H.264 stream on Vega — the browser renders the MJPEG poller feed.
+    forceMjpeg: true,
+    engineKind: "vega",
+  });
+
+  try {
+    const { url } = await session.start();
+    if (!opts.quiet) {
+      console.log(`Attached to ${device.name} [tv] (${device.serial}, Vega)`);
+      console.log(`Preview: ${url}`);
+      console.log("Video mode: MJPEG screenshot polling (Vega has no H.264 stream)");
+    } else {
+      process.stdout.write(JSON.stringify({ device, url }) + "\n");
+    }
+    if (opts.preview && process.env["PORTHOLE_DETACHED_CHILD"] !== "1") {
+      openBrowser(url);
+    }
+  } catch (e) {
+    console.error(`Failed to start: ${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
+  }
+
+  const stopForSignal = async () => {
+    await session.stop();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => void stopForSignal());
+  process.on("SIGTERM", () => void stopForSignal());
+}
+
 async function startDetached(avds: string[], opts: StartOptions): Promise<void> {
   const cliPath = fileURLToPath(import.meta.url);
   const args = [cliPath, "start"];
@@ -875,6 +948,7 @@ async function startDetached(avds: string[], opts: StartOptions): Promise<void> 
   args.push("--port", opts.port, "--host", opts.host, "--no-preview");
   if (opts.device) args.push("--device", opts.device);
   if (opts.mjpeg) args.push("--mjpeg");
+  if (opts.vega) args.push("--vega");
   if (opts.keepAlive) args.push("--keep-alive");
   if (opts.wipeData) args.push("--wipe-data");
   if (opts.snapshot === false || opts.coldBoot) args.push("--no-snapshot");
