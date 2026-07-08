@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "portholejs": "0.1.1",
+    "portholejs": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
