@@ -79,23 +79,49 @@ npx portholejs kill -q
 
 ## Things to try
 
-Test a TV app **without touching a remote**: `porthole focus-on "Library"
---select` walks the D-pad focus to any element by its text and presses OK —
-then `porthole focused -q` tells you exactly where leanback focus landed, as
-JSON. Record a bug repro as a real video with
-`porthole record repro.mp4 --duration 30s` while you swipe, scroll, and
-long-press the phone from the CLI (`porthole scroll down`,
-`porthole swipe 0.5 0.05 0.5 0.7` opens the notification shade). Catch visual
-regressions in one line: save a baseline with `porthole screenshot -o good.png`,
-then `porthole assert-screen good.png --threshold 0.02` exits non-zero and
-writes a diff image the moment the screen drifts. Stream a **phone and a TV
-side by side** from one command — `porthole start Pixel_8 Tv_1080p` puts both
-in the same browser tab with a device picker. And the whole loop works with no
-human at all: add the MCP server to Claude Code (below) and ask it to _"open
-my app on the TV emulator, navigate to Settings, and check nothing crashed"_ —
-it will drive the D-pad, read the UI as JSON (`dump_ui`), and pull
-`get_crashes` on its own. If anything misbehaves, `porthole doctor` diagnoses
-your setup in seconds.
+- **Test a TV app without touching a remote.** Walk the D-pad focus to any
+  element by its text and press OK, then read where leanback focus landed as
+  JSON:
+
+  ```sh
+  porthole focus-on "Library" --select
+  porthole focused -q
+  ```
+
+- **Record a bug repro as a real video** while you drive the phone from the
+  CLI. The swipe below opens the notification shade:
+
+  ```sh
+  porthole record repro.mp4 --duration 30s
+  porthole scroll down
+  porthole swipe 0.5 0.05 0.5 0.7
+  ```
+
+- **Catch visual regressions in one line.** Save a baseline, then the assert
+  exits non-zero and writes a diff image the moment the screen drifts:
+
+  ```sh
+  porthole screenshot -o good.png
+  porthole assert-screen good.png --threshold 0.02
+  ```
+
+- **Stream a phone and a TV side by side** from one command. Both devices
+  share the same browser tab with a device picker:
+
+  ```sh
+  porthole start Pixel_8 Tv_1080p
+  ```
+
+- **Let an agent run the whole loop.** Add the MCP server to Claude Code
+  (below) and ask it to "open my app on the TV emulator, navigate to Settings,
+  and check nothing crashed". It will drive the D-pad, read the UI as JSON
+  with `dump_ui`, and pull `get_crashes` on its own.
+
+- **If anything misbehaves**, diagnose your setup in seconds:
+
+  ```sh
+  porthole doctor
+  ```
 
 ## CLI Reference
 
