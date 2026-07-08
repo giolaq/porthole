@@ -18,6 +18,7 @@ import { comparePngScreens, parseDiffRegion } from "../screen-diff.js";
 import { focusOn } from "../focus-navigation.js";
 import { H264Recorder } from "../recording.js";
 import { encodeVideoPacket } from "../protocol.js";
+import { VERSION } from "../version.js";
 
 let engine: Engine | null = null;
 let activeSerial: string | null = null;
@@ -28,7 +29,7 @@ let activeRecording: { recorder: H264Recorder; path: string; startedAt: number }
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
     name: "porthole",
-    version: "0.0.1",
+    version: VERSION,
   });
 
   server.tool(
