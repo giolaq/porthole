@@ -63,7 +63,7 @@
     "@yume-chan/adb-scrcpy": "^2.3.2",
     "@yume-chan/adb-server-node-tcp": "^2.5.2",
     "@yume-chan/scrcpy": "^2.3.0",
-    "@yume-chan/stream-extra": "^2.5.3",
+    "@yume-chan/stream-extra": "^2.6.1",
     "commander": "^14.0.3",
     "jpeg-js": "^0.4.4",
     "pixelmatch": "^7.2.0",
