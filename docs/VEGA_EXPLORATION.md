@@ -117,10 +117,35 @@ We ran the go/no-go experiment on the same day:
   `com.amazon.hdmi.certificate`; `servicergrd` cannot connect). Identical
   crash with `--gui` and `--no-gui`.
 - Conclusion: the **unmodified Amazon template cannot run on this VVD
-  build** — an SDK image bug/mismatch, not a Porthole limitation. The
-  key-delivery plumbing (QMP `send-key` → `qwerty2` → `inputd`) is verified
-  present; the final "focus visibly moves in an app" check needs a working
-  app, so it waits for an SDK update or a real Vega device.
+  build** — an SDK image bug/mismatch, not a Porthole limitation. Note that
+  a real user app (`com.giolaq.multitv.vega.main`, built against a newer
+  Kepler SDK) DOES run and render on the same VVD — the hdmicontrol failure
+  is fatal only for the template's Kepler version.
+
+## Input verdict (tested against a running real app)
+
+With MultiTV running and visibly focused ("Home" highlighted), none of the
+following moved leanback focus, in either `--gui` or `--no-gui` mode:
+
+- QMP `send-key` (up/down/right/ret/esc) — accepted, no UI reaction.
+- Emulator console `event send EV_KEY:KEY_DOWN:1/0` — accepted, no reaction.
+- `vlcm trigger-back --inst <id>` — `Error sending request (-7)`.
+
+Diagnosis: Vega routes app input through an **input session** (`vlcm
+dump-state` shows every "App Session"/"User Engaged Session" empty; `vlcm
+mock-app-session --pid <pid> --input-source <?>` exists but its source
+grammar is undocumented and all guessed values were rejected). Key events
+from the emulated keyboard reach the guest but `inputd` does not deliver
+them to apps without such a session. The VVD GUI presumably establishes one
+through a private channel when its window has focus.
+
+**Porthole Vega status therefore: streaming/screenshots fully work; input
+does not reach apps yet.** Next avenues, in order: (1) Amazon's docs/forums
+for the `mock-app-session` input-source grammar, (2) the
+`com.amazon.dev.shell.service` component (a developer shell service that may
+expose an input API), (3) sniffing what the VVD GUI sends when its remote
+skin is clicked (lsof/strace on the qemu process), (4) asking the Vega SDK
+team directly — Porthole has a precise repro for them.
 
 ## Risks & open items
 
