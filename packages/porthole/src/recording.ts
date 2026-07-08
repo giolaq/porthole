@@ -18,8 +18,8 @@ export interface RecordingResult {
 
 export async function recordSession(opts: RecordingOptions): Promise<RecordingResult> {
   const session = await discoverSession(opts);
-  const health = await fetchHealth(session.url);
-  const url = websocketUrl(session.url);
+  const health = await fetchHealth(session.url, session.serial);
+  const url = websocketUrl(session.url, session.serial);
   const recorder = new H264Recorder(health.width, health.height);
   const startedAt = Date.now();
 
@@ -114,9 +114,11 @@ export class H264Recorder {
 
 async function fetchHealth(
   sessionUrl: string,
+  deviceId: string,
 ): Promise<{ width: number; height: number }> {
   const url = new URL(sessionUrl);
   url.pathname = "/health";
+  url.searchParams.set("device", deviceId);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Unable to read session health: ${response.status}`);
   const body = (await response.json()) as { width?: number; height?: number };
@@ -125,10 +127,11 @@ async function fetchHealth(
   return { width: body.width, height: body.height };
 }
 
-function websocketUrl(sessionUrl: string): string {
+function websocketUrl(sessionUrl: string, deviceId: string): string {
   const url = new URL(sessionUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws";
+  url.searchParams.set("device", deviceId);
   return url.toString();
 }
 

@@ -65,6 +65,7 @@ in sync (see `src/engine/scrcpy-engine.ts`).
 
 ```sh
 npx portholejs start Pixel_8_Pro_API_34
+npx portholejs start Pixel_8_Pro_API_34 Television_1080p_API_34
 ```
 
 For a headless agent workflow:
@@ -80,7 +81,7 @@ npx portholejs kill -q
 
 | Command                              | Purpose                                             |
 | ------------------------------------ | --------------------------------------------------- |
-| `porthole start [avd]`               | Boot or attach and serve the browser preview        |
+| `porthole start [avd...]`            | Boot or attach one or more emulators and serve them |
 | `porthole list`                      | List AVDs, running emulators, and known sessions    |
 | `porthole kill [avd]`                | Stop emulators Porthole booted and detached servers |
 | `porthole tap <x> <y>`               | Touch normalized phone coordinates from `0..1`      |
@@ -107,29 +108,31 @@ npx portholejs kill -q
 
 Common options:
 
-| Option                  | Meaning                                          |
-| ----------------------- | ------------------------------------------------ |
-| `-p, --port <port>`     | Preview/control port, default `3200`             |
-| `-d, --device <serial>` | Attach to a running emulator serial              |
-| `--host <host>`         | Bind address, default `127.0.0.1`                |
-| `--no-preview`          | Do not open the browser automatically            |
-| `--detach`              | Start the preview server in the background       |
-| `--mjpeg`               | Force MJPEG screenshot polling                   |
-| `-q, --quiet`           | Emit one JSON object/array on stdout             |
-| `--max-size <px>`       | Maximum scrcpy stream dimension                  |
-| `--max-fps <fps>`       | Maximum scrcpy FPS                               |
-| `--bitrate <bps>`       | Scrcpy video bitrate                             |
-| `--wipe-data`           | Wipe emulator data before boot                   |
-| `--no-snapshot`         | Disable loading/saving emulator snapshots        |
-| `--cold-boot`           | Alias for `--no-snapshot`                        |
-| `--gpu <mode>`          | Pass emulator GPU mode                           |
-| `--keep-alive`          | Leave a Porthole-booted emulator running on exit |
+| Option                  | Meaning                                                 |
+| ----------------------- | ------------------------------------------------------- |
+| `-p, --port <port>`     | Preview/control port, default `3200`                    |
+| `-d, --device <serial>` | Target a running emulator serial; comma-list on `start` |
+| `--host <host>`         | Bind address, default `127.0.0.1`                       |
+| `--no-preview`          | Do not open the browser automatically                   |
+| `--detach`              | Start the preview server in the background              |
+| `--mjpeg`               | Force MJPEG screenshot polling                          |
+| `-q, --quiet`           | Emit one JSON object/array on stdout                    |
+| `--max-size <px>`       | Maximum scrcpy stream dimension                         |
+| `--max-fps <fps>`       | Maximum scrcpy FPS                                      |
+| `--bitrate <bps>`       | Scrcpy video bitrate                                    |
+| `--wipe-data`           | Wipe emulator data before boot                          |
+| `--no-snapshot`         | Disable loading/saving emulator snapshots               |
+| `--cold-boot`           | Alias for `--no-snapshot`                               |
+| `--gpu <mode>`          | Pass emulator GPU mode                                  |
+| `--keep-alive`          | Leave a Porthole-booted emulator running on exit        |
 
 Quiet schemas are intentionally simple: `list -q` returns
-`{ "devices": [...], "sessions": [...] }`; `start --detach -q` returns the
-session record with `url`, `pid`, `serial`, `avdName`, `port`, and `profile`;
-input commands return `{ "ok": true, "session": ... }`; `screenshot -q` returns
-`{ "ok": true, "path": "...", "session": ... }`.
+`{ "devices": [...], "sessions": [...] }`; single-device `start --detach -q`
+returns the session record with `url`, `pid`, `serial`, `avdName`, `port`, and
+`profile`; multi-device detached starts return `{ "sessions": [...] }`; input
+commands return `{ "ok": true, "session": ... }`; `screenshot -q` returns
+`{ "ok": true, "path": "...", "session": ... }`. Pass `-d <serial>` to
+port-scoped commands when a server is streaming more than one emulator.
 
 ## MCP Setup
 
@@ -213,9 +216,10 @@ smoke script. See `docs/github-action-example.yml` for a fuller `focus-on` /
 
 ## Browser UI
 
-The preview shows the active device, stream status, screenshots, copy-to-clipboard,
+The preview shows device tabs, stream status, screenshots, copy-to-clipboard,
 stream stats, logcat, drag-and-drop APK install/file push, phone hardware keys,
-and a TV D-pad remote. TV sessions reject touch input server-side.
+and a TV D-pad remote. Switching tabs re-subscribes to that device's stream
+without reloading the page. TV sessions reject touch input server-side.
 
 Video uses WebCodecs by default. Browsers without `VideoDecoder` automatically
 fall back to `/stream.mjpeg`, and `--mjpeg` or `?video=mjpeg` forces that mode.

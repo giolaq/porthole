@@ -5,6 +5,7 @@ import { readState, removeSession, type PortholeSessionRecord } from "./state.js
 
 export interface ControlClientOptions {
   port?: number;
+  device?: string;
 }
 
 export async function sendSessionInput(
@@ -72,6 +73,7 @@ export async function discoverSession(
   const state = await readState();
   const candidates = state.sessions
     .filter((session) => opts.port === undefined || session.port === opts.port)
+    .filter((session) => opts.device === undefined || session.serial === opts.device)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 
   for (const session of candidates) {
@@ -84,7 +86,9 @@ export async function discoverSession(
   throw new Error(
     opts.port === undefined
       ? "No running Porthole session found. Start one with `porthole start`."
-      : `No running Porthole session found on port ${opts.port}.`,
+      : opts.device === undefined
+        ? `No running Porthole session found on port ${opts.port}.`
+        : `No running Porthole session found for ${opts.device} on port ${opts.port}.`,
   );
 }
 
@@ -111,9 +115,14 @@ async function isSessionAlive(session: PortholeSessionRecord): Promise<boolean> 
 function sessionUrl(session: PortholeSessionRecord, path: string): string {
   const url = new URL(session.url);
   const token = url.searchParams.get("token");
-  url.pathname = path;
+  const requested = new URL(path, url);
+  url.pathname = requested.pathname;
   url.search = "";
+  for (const [key, value] of requested.searchParams) {
+    url.searchParams.set(key, value);
+  }
   if (token) url.searchParams.set("token", token);
+  url.searchParams.set("device", session.serial);
   return url.toString();
 }
 

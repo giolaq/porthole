@@ -23,6 +23,24 @@ describe("video packet protocol", () => {
       data: new Uint8Array([1, 2, 3]),
     });
   });
+
+  it("round-trips device ids without breaking payloads", () => {
+    const packet = encodeVideoPacket(
+      {
+        type: "frame",
+        data: new Uint8Array([4, 5, 6]),
+        timestamp: 84,
+        keyframe: false,
+      },
+      "emulator-5556",
+    );
+    expect(decodeVideoPacket(packet.buffer)).toEqual({
+      type: "delta",
+      timestamp: 84,
+      data: new Uint8Array([4, 5, 6]),
+      deviceId: "emulator-5556",
+    });
+  });
 });
 
 describe("input protocol", () => {

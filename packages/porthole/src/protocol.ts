@@ -101,41 +101,65 @@ export interface DecodedWsPacket {
   type: WsPacketType;
   timestamp: number;
   data: Uint8Array;
+  deviceId?: string;
 }
 
 const PACKET_HEADER_BYTES = 13;
 const LEGACY_PACKET_HEADER_BYTES = 5;
+const DEVICE_PACKET_FLAG = 0x80;
 const TOUCH_PHASES = new Set(["down", "move", "up"]);
 const KEY_PHASES = new Set(["down", "up"]);
 const REMOTE_BUTTON_SET = new Set<string>(REMOTE_BUTTONS);
 
-export function encodeVideoPacket(chunk: VideoChunk): Uint8Array {
+export function encodeVideoPacket(chunk: VideoChunk, deviceId?: string): Uint8Array {
   const type = chunk.type === "config" ? 0 : chunk.keyframe ? 2 : 1;
-  const header = new Uint8Array(PACKET_HEADER_BYTES);
+  const deviceBytes =
+    deviceId === undefined ? undefined : new TextEncoder().encode(deviceId);
+  const headerLength =
+    deviceBytes === undefined
+      ? PACKET_HEADER_BYTES
+      : PACKET_HEADER_BYTES + 2 + deviceBytes.length;
+  const header = new Uint8Array(headerLength);
   const view = new DataView(header.buffer);
-  view.setUint8(0, type);
+  view.setUint8(0, deviceBytes === undefined ? type : type | DEVICE_PACKET_FLAG);
   view.setUint32(1, chunk.data.byteLength);
   view.setFloat64(5, chunk.timestamp ?? 0);
-  const packet = new Uint8Array(PACKET_HEADER_BYTES + chunk.data.byteLength);
+  if (deviceBytes !== undefined) {
+    view.setUint16(PACKET_HEADER_BYTES, deviceBytes.length);
+    header.set(deviceBytes, PACKET_HEADER_BYTES + 2);
+  }
+  const packet = new Uint8Array(headerLength + chunk.data.byteLength);
   packet.set(header, 0);
-  packet.set(chunk.data, PACKET_HEADER_BYTES);
+  packet.set(chunk.data, headerLength);
   return packet;
 }
 
 export function decodeVideoPacket(data: ArrayBufferLike): DecodedWsPacket {
   const view = new DataView(data);
   const rawType = view.getUint8(0);
+  const hasDeviceId = (rawType & DEVICE_PACKET_FLAG) !== 0;
   const length = view.getUint32(1);
   const timestamp = data.byteLength >= PACKET_HEADER_BYTES ? view.getFloat64(5) : 0;
-  const offset =
+  const legacyOffset =
     data.byteLength >= PACKET_HEADER_BYTES
       ? PACKET_HEADER_BYTES
       : LEGACY_PACKET_HEADER_BYTES;
-  const type: WsPacketType = rawType === 0 ? "config" : rawType === 2 ? "key" : "delta";
+  let offset = legacyOffset;
+  let deviceId: string | undefined;
+  if (hasDeviceId) {
+    const deviceLength = view.getUint16(PACKET_HEADER_BYTES);
+    offset = PACKET_HEADER_BYTES + 2 + deviceLength;
+    deviceId = new TextDecoder().decode(
+      new Uint8Array(data, PACKET_HEADER_BYTES + 2, deviceLength),
+    );
+  }
+  const typeByte = rawType & ~DEVICE_PACKET_FLAG;
+  const type: WsPacketType = typeByte === 0 ? "config" : typeByte === 2 ? "key" : "delta";
   return {
     type,
     timestamp,
     data: new Uint8Array(data, offset, length),
+    ...(deviceId === undefined ? {} : { deviceId }),
   };
 }
 

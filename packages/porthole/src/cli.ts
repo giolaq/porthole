@@ -15,7 +15,7 @@ import {
   type DeviceInfo,
 } from "./device-manager.js";
 import { REMOTE_BUTTON_TO_KEYCODE, type RemoteButton } from "./keycodes.js";
-import { Session } from "./session.js";
+import { Session, type SessionDeviceOptions } from "./session.js";
 import { startMcpServer } from "./mcp/server.js";
 import { VERSION } from "./index.js";
 import { resolveTarget } from "./target-resolution.js";
@@ -27,7 +27,7 @@ import {
   sendSessionInput,
   writeScreenshot,
 } from "./control-client.js";
-import { readState } from "./state.js";
+import { readState, removeSession } from "./state.js";
 import { runCliAction } from "./cli-errors.js";
 import { runDoctor } from "./doctor.js";
 import { ensurePortFree } from "./port-check.js";
@@ -99,7 +99,7 @@ program
   });
 
 program
-  .command("start [avd]", { isDefault: true })
+  .command("start [avds...]", { isDefault: true })
   .description("Boot/attach emulator and serve preview")
   .option("-p, --port <port>", "HTTP port", "3200")
   .option("-d, --device <serial>", "Target device serial")
@@ -118,7 +118,7 @@ program
   .option("-q, --quiet", "Quiet/JSON mode")
   .action(
     async (
-      avd: string | undefined,
+      avds: string[] | undefined,
       opts: {
         port: string;
         device?: string;
@@ -147,67 +147,33 @@ program
       }
 
       if (opts.detach && process.env["PORTHOLE_DETACHED_CHILD"] !== "1") {
-        await startDetached(avd, opts);
+        await startDetached(avds ?? [], opts);
         return;
       }
 
       const sdk = findAndroidSdk();
-      let devices = await listDevices();
-      let selectedAvd = avd;
-      if (!selectedAvd && !opts.device && !opts.quiet) {
-        selectedAvd = await promptForAvd(devices);
+      const devices = await listDevices();
+      let selectedAvds = avds ?? [];
+      if (selectedAvds.length === 0 && !opts.device && !opts.quiet) {
+        const selectedAvd = await promptForAvd(devices);
+        selectedAvds = selectedAvd ? [selectedAvd] : [];
       }
 
-      const resolution = resolveTarget(devices, selectedAvd, opts.device);
-      let target: DeviceInfo | undefined;
-      let bootedByUs = false;
-
-      if (resolution.action === "error") {
-        console.error(resolution.message);
-        process.exit(1);
-      }
-
-      if (resolution.action === "boot") {
-        if (!opts.quiet) console.log(`Booting ${resolution.avdName}...`);
-        const serial = await bootDevice({
-          sdk,
-          avdName: resolution.avdName,
-          emulatorArgs: emulatorArgs(opts),
-        });
-        devices = await listDevices();
-        target = devices.find((d) => d.serial === serial);
-        bootedByUs = true;
-      } else {
-        target = resolution.device;
-      }
-
-      if (target?.state === "offline") {
-        if (!opts.quiet) console.log(`Reconnecting ${target.serial}...`);
-        await reconnectOfflineDevices(sdk, target.serial ?? undefined);
-        devices = await listDevices();
-        const reconnected = devices.find(
-          (device) =>
-            (target?.serial && device.serial === target.serial) ||
-            device.name === target?.name,
-        );
-        if (reconnected) {
-          target = reconnected;
-        }
-      }
-
-      if (!target || !target.serial || target.state !== "running") {
-        console.error("No target device.");
+      let targets: SessionDeviceOptions[];
+      try {
+        targets = await resolveSessionTargets(devices, selectedAvds, opts, sdk);
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
         process.exit(1);
       }
 
       const session = new Session({
-        device: target,
+        devices: targets,
         port: parseInt(opts.port, 10),
         host: opts.host,
         maxSize: Number(opts.maxSize),
         maxFps: Number(opts.maxFps),
         bitrate: opts.bitrate ? Number(opts.bitrate) : undefined,
-        bootedByUs,
         detached: process.env["PORTHOLE_DETACHED_CHILD"] === "1",
         forceMjpeg: opts.mjpeg ?? false,
       });
@@ -215,13 +181,18 @@ program
       try {
         const { url } = await session.start();
         if (!opts.quiet) {
-          console.log(
-            `Attached to ${target.name} [${target.profile}] (${target.serial})`,
-          );
+          for (const target of targets) {
+            console.log(
+              `Attached to ${target.device.name} [${target.device.profile}] (${target.device.serial})`,
+            );
+          }
           console.log(`Preview: ${url}`);
           if (opts.mjpeg) console.log("Video mode: MJPEG screenshot polling");
         } else {
-          process.stdout.write(JSON.stringify({ device: target, url }) + "\n");
+          process.stdout.write(
+            JSON.stringify({ devices: targets.map((target) => target.device), url }) +
+              "\n",
+          );
         }
         if (opts.preview && process.env["PORTHOLE_DETACHED_CHILD"] !== "1") {
           openBrowser(url);
@@ -235,16 +206,20 @@ program
         } else {
           console.error(`Failed to start: ${message}`);
         }
-        if (bootedByUs && !opts.keepAlive && target.serial) {
-          await shutdownDevice(sdk, target.serial);
+        for (const target of targets) {
+          if (target.bootedByUs && !opts.keepAlive && target.device.serial) {
+            await shutdownDevice(sdk, target.device.serial);
+          }
         }
         process.exit(1);
       }
 
       const stopForSignal = async () => {
         await session.stop();
-        if (bootedByUs && !opts.keepAlive && target.serial) {
-          await shutdownDevice(sdk, target.serial);
+        for (const target of targets) {
+          if (target.bootedByUs && !opts.keepAlive && target.device.serial) {
+            await shutdownDevice(sdk, target.device.serial);
+          }
         }
         process.exit(0);
       };
@@ -262,6 +237,9 @@ program
     const devices = await listDevices();
     const state = await readState();
     const targetSerials = new Set<string>();
+    const matchedSessions = state.sessions.filter(
+      (session) => !avd || session.avdName === avd,
+    );
     for (const d of devices) {
       if (
         d.state === "running" &&
@@ -271,15 +249,25 @@ program
         targetSerials.add(d.serial);
       }
     }
-    for (const session of state.sessions) {
-      if (!avd || session.avdName === avd) {
-        targetSerials.add(session.serial);
-        if (session.detached && session.pid !== process.pid) {
+    for (const session of matchedSessions) {
+      targetSerials.add(session.serial);
+      if (session.detached && session.pid !== process.pid) {
+        const siblingOnSharedServer =
+          avd !== undefined &&
+          state.sessions.some(
+            (other) =>
+              other.pid === session.pid &&
+              other.port === session.port &&
+              other.serial !== session.serial,
+          );
+        if (!siblingOnSharedServer) {
           try {
             process.kill(session.pid, "SIGTERM");
           } catch {
             // process already gone
           }
+        } else {
+          await removeSession({ serial: session.serial });
         }
       }
     }
@@ -310,6 +298,7 @@ program
   .command("tap <x> <y>")
   .description("Touch at normalized 0..1 coordinates")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((x: string, y: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
@@ -320,11 +309,11 @@ program
       }
       await sendSessionInput(
         { kind: "touch", phase: "down", x: nx, y: ny },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       const session = await sendSessionInput(
         { kind: "touch", phase: "up", x: nx, y: ny },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, session, event: "tap" }, `Tapped ${nx},${ny}`);
     });
@@ -336,6 +325,7 @@ program
   .option("--duration <ms>", "Gesture duration in milliseconds")
   .option("--steps <count>", "Number of move events")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action(
     (
@@ -374,6 +364,7 @@ program
   .description("Long-press normalized 0..1 phone coordinates")
   .option("--duration <ms>", "Hold duration in milliseconds")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action(
     (
@@ -405,6 +396,7 @@ program
   .option("--amount <value>", "Normalized scroll amount", "0.5")
   .option("--duration <ms>", "Gesture duration in milliseconds")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action(
     (
@@ -438,6 +430,7 @@ program
   .command("key <keycode>")
   .description("Send a single Android keyevent")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((keycode: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
@@ -447,11 +440,11 @@ program
       }
       await sendSessionInput(
         { kind: "key", phase: "down", keycode: code },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       const session = await sendSessionInput(
         { kind: "key", phase: "up", keycode: code },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, session, keycode: code }, `Key ${code} sent`);
     });
@@ -461,6 +454,7 @@ program
   .command("remote <button>")
   .description("D-pad / media remote button")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((button: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
@@ -471,7 +465,7 @@ program
       }
       const session = await sendSessionInput(
         { kind: "remote", button: button as RemoteButton },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, session, button }, `Remote: ${button}`);
     });
@@ -481,12 +475,13 @@ program
   .command("text <string>")
   .description("Type text")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((text: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
       const session = await sendSessionInput(
         { kind: "text", text },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, session, text }, `Typed "${text}"`);
     });
@@ -496,18 +491,19 @@ program
   .command("screenshot")
   .description("Take a PNG screenshot from a running session")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-o, --output <file>", "Output path")
   .option("-q, --quiet", "JSON output")
-  .action((opts: { port?: string; output?: string; quiet?: boolean }) => {
-    void runCliAction(opts, async () => {
-      const { session, png } = await fetchSessionScreenshot({
-        port: parseOptionalPort(opts.port),
+  .action(
+    (opts: { port?: string; device?: string; output?: string; quiet?: boolean }) => {
+      void runCliAction(opts, async () => {
+        const { session, png } = await fetchSessionScreenshot(sessionControlOpts(opts));
+        const output = opts.output ?? defaultScreenshotPath(session.serial);
+        await writeScreenshot(output, png);
+        printResult(opts.quiet, { ok: true, path: output, session }, output);
       });
-      const output = opts.output ?? defaultScreenshotPath(session.serial);
-      await writeScreenshot(output, png);
-      printResult(opts.quiet, { ok: true, path: output, session }, output);
-    });
-  });
+    },
+  );
 
 program
   .command("assert-screen <baseline>")
@@ -516,6 +512,7 @@ program
   .option("--diff <file>", "Write a PNG diff image")
   .option("--region <x,y,w,h>", "Compare a pixel region")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action(
     (
@@ -562,15 +559,19 @@ program
   .description("Record the current H.264 stream to an MP4 file")
   .option("--duration <duration>", "Recording duration, e.g. 30s or 1500ms")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action(
-    (output: string, opts: { duration?: string; port?: string; quiet?: boolean }) => {
+    (
+      output: string,
+      opts: { duration?: string; port?: string; device?: string; quiet?: boolean },
+    ) => {
       void runCliAction(opts, async () => {
         const result = await recordSession({
           output,
           durationMs:
             opts.duration === undefined ? undefined : parseDurationMs(opts.duration),
-          port: parseOptionalPort(opts.port),
+          ...sessionControlOpts(opts),
         });
         printResult(opts.quiet, result, `Recorded ${result.path}`);
       });
@@ -581,13 +582,14 @@ program
   .command("rotate <orientation>")
   .description("Rotate a phone session: portrait, landscape, left, or right")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((orientation: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
       const result = await postSessionJson(
         "/api/rotate",
         { orientation },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, ...result }, `Rotated ${orientation}`);
     });
@@ -597,13 +599,14 @@ program
   .command("emu <args...>")
   .description("Pass arguments to adb emu for the active session")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((args: string[], opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
       const result = await postSessionJson(
         "/api/emu",
         { args },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, ...result }, "Emulator command sent");
     });
@@ -613,6 +616,7 @@ program
   .command("focused")
   .description("Print the currently focused UI node")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
@@ -629,6 +633,7 @@ program
   .option("--select", "Press select after focusing")
   .option("--max-steps <count>", "Maximum D-pad steps", "15")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action(
     (
@@ -643,7 +648,7 @@ program
             select: opts.select === true,
             maxSteps: parsePositiveInteger(opts.maxSteps, "max-steps"),
           },
-          { port: parseOptionalPort(opts.port) },
+          sessionControlOpts(opts),
         );
         printResult(opts.quiet, result, `Focused ${text}`);
       });
@@ -654,48 +659,58 @@ program
   .command("dump-ui")
   .description("Dump the Android accessibility hierarchy")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("--filter <text>", "Filter by text/resource id/content description")
   .option("-q, --quiet", "JSON output")
-  .action((opts: { port?: string; filter?: string; quiet?: boolean }) => {
-    void runCliAction(opts, async () => {
-      const query = opts.filter
-        ? `?${new URLSearchParams({ filter: opts.filter }).toString()}`
-        : "";
-      const result = await getSessionJson(`/api/ui${query}`, {
-        port: parseOptionalPort(opts.port),
+  .action(
+    (opts: { port?: string; device?: string; filter?: string; quiet?: boolean }) => {
+      void runCliAction(opts, async () => {
+        const query = opts.filter
+          ? `?${new URLSearchParams({ filter: opts.filter }).toString()}`
+          : "";
+        const result = await getSessionJson(`/api/ui${query}`, {
+          ...sessionControlOpts(opts),
+        });
+        printResult(opts.quiet, result, JSON.stringify(result.response, null, 2));
       });
-      printResult(opts.quiet, result, JSON.stringify(result.response, null, 2));
-    });
-  });
+    },
+  );
 
 program
   .command("wait-for <text>")
   .description("Wait until text appears in the UI hierarchy")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("--timeout <ms>", "Timeout in milliseconds", "10000")
   .option("-q, --quiet", "JSON output")
-  .action((text: string, opts: { port?: string; timeout: string; quiet?: boolean }) => {
-    void runCliAction(opts, async () => {
-      const result = await postSessionJson(
-        "/api/wait_for",
-        { text, timeoutMs: Number(opts.timeout) },
-        { port: parseOptionalPort(opts.port) },
-      );
-      printResult(opts.quiet, { ok: true, ...result }, `Found "${text}"`);
-    });
-  });
+  .action(
+    (
+      text: string,
+      opts: { port?: string; device?: string; timeout: string; quiet?: boolean },
+    ) => {
+      void runCliAction(opts, async () => {
+        const result = await postSessionJson(
+          "/api/wait_for",
+          { text, timeoutMs: Number(opts.timeout) },
+          sessionControlOpts(opts),
+        );
+        printResult(opts.quiet, { ok: true, ...result }, `Found "${text}"`);
+      });
+    },
+  );
 
 program
   .command("open-url <url>")
   .description("Open an Android deep link or URL")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((url: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
       const result = await postSessionJson(
         "/api/open_url",
         { url },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, ...result }, `Opened ${url}`);
     });
@@ -705,13 +720,14 @@ program
   .command("stop-app <package>")
   .description("Force-stop an app package")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((packageName: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
       const result = await postSessionJson(
         "/api/stop_app",
         { packageName },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, ...result }, `Stopped ${packageName}`);
     });
@@ -721,13 +737,14 @@ program
   .command("clear-app <package>")
   .description("Clear an app package's data")
   .option("-p, --port <port>", "Session port")
+  .option("-d, --device <serial>", "Target device serial")
   .option("-q, --quiet", "JSON output")
   .action((packageName: string, opts: { port?: string; quiet?: boolean }) => {
     void runCliAction(opts, async () => {
       const result = await postSessionJson(
         "/api/clear_app",
         { packageName },
-        { port: parseOptionalPort(opts.port) },
+        sessionControlOpts(opts),
       );
       printResult(opts.quiet, { ok: true, ...result }, `Cleared ${packageName}`);
     });
@@ -760,10 +777,103 @@ interface StartOptions {
   quiet?: boolean;
 }
 
-async function startDetached(avd: string | undefined, opts: StartOptions): Promise<void> {
+async function resolveSessionTargets(
+  initialDevices: DeviceInfo[],
+  avds: string[],
+  opts: StartOptions,
+  sdk: string,
+): Promise<SessionDeviceOptions[]> {
+  let devices = initialDevices;
+  const serials = parseSerialList(opts.device);
+  if (serials.length > 0) {
+    const targets: SessionDeviceOptions[] = [];
+    for (const serial of serials) {
+      let target = devices.find((device) => device.serial === serial);
+      if (target?.state === "offline") {
+        if (!opts.quiet) console.log(`Reconnecting ${target.serial}...`);
+        await reconnectOfflineDevices(sdk, target.serial ?? undefined);
+        devices = await listDevices();
+        target = devices.find((device) => device.serial === serial);
+      }
+      if (!target || !target.serial || target.state !== "running") {
+        throw new Error(`No running target device for serial ${serial}.`);
+      }
+      targets.push({ device: target, bootedByUs: false });
+    }
+    return targets;
+  }
+
+  const requested = avds.length > 0 ? avds : [undefined];
+  const targets: SessionDeviceOptions[] = [];
+  for (const avd of requested) {
+    const resolution = resolveTarget(devices, avd, undefined);
+    let target: DeviceInfo | undefined;
+    let bootedByUs = false;
+
+    if (resolution.action === "error") {
+      throw new Error(resolution.message);
+    }
+
+    if (resolution.action === "boot") {
+      if (!opts.quiet) console.log(`Booting ${resolution.avdName}...`);
+      const serial = await bootDevice({
+        sdk,
+        avdName: resolution.avdName,
+        emulatorArgs: emulatorArgs(opts),
+      });
+      devices = await listDevices();
+      target = devices.find((device) => device.serial === serial);
+      bootedByUs = true;
+    } else {
+      target = resolution.device;
+    }
+
+    if (target?.state === "offline") {
+      if (!opts.quiet) console.log(`Reconnecting ${target.serial}...`);
+      await reconnectOfflineDevices(sdk, target.serial ?? undefined);
+      devices = await listDevices();
+      const reconnected = devices.find(
+        (device) =>
+          (target?.serial && device.serial === target.serial) ||
+          device.name === target?.name,
+      );
+      if (reconnected) target = reconnected;
+    }
+
+    if (!target || !target.serial || target.state !== "running") {
+      throw new Error("No target device.");
+    }
+
+    if (!targets.some((entry) => entry.device.serial === target?.serial)) {
+      targets.push({ device: target, bootedByUs });
+    }
+  }
+  return targets;
+}
+
+function parseSerialList(value: string | undefined): string[] {
+  return value
+    ? value
+        .split(",")
+        .map((serial) => serial.trim())
+        .filter(Boolean)
+    : [];
+}
+
+function sessionControlOpts(opts: { port?: string; device?: string }): {
+  port?: number;
+  device?: string;
+} {
+  return {
+    port: parseOptionalPort(opts.port),
+    device: opts.device,
+  };
+}
+
+async function startDetached(avds: string[], opts: StartOptions): Promise<void> {
   const cliPath = fileURLToPath(import.meta.url);
   const args = [cliPath, "start"];
-  if (avd) args.push(avd);
+  args.push(...avds);
   args.push("--port", opts.port, "--host", opts.host, "--no-preview");
   if (opts.device) args.push("--device", opts.device);
   if (opts.mjpeg) args.push("--mjpeg");
@@ -784,26 +894,29 @@ async function startDetached(avd: string | undefined, opts: StartOptions): Promi
 
   const port = parsePort(opts.port);
   const deadline = Date.now() + 120_000;
-  let session;
+  let sessions: Awaited<ReturnType<typeof readState>>["sessions"] = [];
+  const expectedSessions = Math.max(1, avds.length, parseSerialList(opts.device).length);
   while (Date.now() < deadline) {
     const state = await readState();
-    session = state.sessions.find(
+    sessions = state.sessions.filter(
       (record) => record.port === port && record.pid === child.pid,
     );
-    if (session) break;
+    if (sessions.length >= expectedSessions) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  if (!session) {
+  if (sessions.length === 0) {
     console.error("Detached server did not become ready before the timeout.");
     process.exit(1);
   }
 
   if (opts.quiet) {
-    process.stdout.write(JSON.stringify(session) + "\n");
+    process.stdout.write(
+      JSON.stringify(sessions.length === 1 ? sessions[0] : { sessions }) + "\n",
+    );
   } else {
-    console.log(`Detached Porthole server pid=${session.pid}`);
-    console.log(`Preview: ${session.url}`);
+    console.log(`Detached Porthole server pid=${sessions[0]?.pid}`);
+    console.log(`Preview: ${sessions[0]?.url}`);
   }
 }
 

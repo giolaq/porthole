@@ -9,37 +9,39 @@ import { sendGesture } from "../gesture.js";
 
 export interface WsServerOptions {
   httpServer: Server;
-  getEngine: () => Engine | null;
-  getDevice?: () => DeviceInfo;
+  getEngine: (deviceId?: string) => Engine | null;
+  getDevice?: (deviceId?: string) => DeviceInfo | undefined;
+  getDefaultDeviceId?: () => string | undefined;
   token?: string;
 }
 
 export function createWsServer(opts: WsServerOptions) {
-  const { httpServer, getEngine, getDevice, token } = opts;
+  const { httpServer, getEngine, getDevice, getDefaultDeviceId, token } = opts;
 
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
-  let currentEngine: Engine | null = null;
-  let lastConfig: Buffer | null = null;
-  let lastKeyframe: Buffer | null = null;
+  const clientDevices = new WeakMap<WebSocket, string>();
+  const lastConfig = new Map<string, Buffer>();
+  const lastKeyframe = new Map<string, Buffer>();
 
-  function attachEngine(engine: Engine): void {
-    currentEngine = engine;
+  function attachEngine(deviceId: string, engine: Engine): void {
     engine.onVideoChunk((chunk: VideoChunk) => {
-      const packet = Buffer.from(encodeVideoPacket(chunk));
+      const packet = Buffer.from(encodeVideoPacket(chunk, deviceId));
 
       if (chunk.type === "config") {
-        lastConfig = packet;
+        lastConfig.set(deviceId, packet);
       } else {
-        // Cache keyframes for new clients
         const isKey = chunk.keyframe ?? hasIdrNal(chunk.data);
         if (isKey) {
-          lastKeyframe = packet;
+          lastKeyframe.set(deviceId, packet);
         }
       }
 
       for (const client of wss.clients) {
-        if (client.readyState === WebSocket.OPEN) {
+        if (
+          client.readyState === WebSocket.OPEN &&
+          clientDevices.get(client) === deviceId
+        ) {
           client.send(packet);
         }
       }
@@ -52,17 +54,26 @@ export function createWsServer(opts: WsServerOptions) {
       ws.close(1008, "Porthole token required.");
       return;
     }
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const deviceId = url.searchParams.get("device") ?? getDefaultDeviceId?.();
+    if (!deviceId) {
+      ws.close(1011, "No active device.");
+      return;
+    }
+    clientDevices.set(ws, deviceId);
     // Send cached config + keyframe so late-joining clients can decode immediately
-    if (lastConfig) ws.send(lastConfig);
-    if (lastKeyframe) ws.send(lastKeyframe);
+    const config = lastConfig.get(deviceId);
+    const keyframe = lastKeyframe.get(deviceId);
+    if (config) ws.send(config);
+    if (keyframe) ws.send(keyframe);
 
     ws.on("message", (data) => {
-      const engine = getEngine() ?? currentEngine;
+      const engine = getEngine(deviceId);
       if (!engine) return;
 
       try {
         const event = parseInputEvent(JSON.parse(data.toString()));
-        const device = getDevice?.();
+        const device = getDevice?.(deviceId);
         if (device) assertInputAllowed(device.profile, event);
         if (event.kind === "gesture") {
           void sendGesture(event, (touch) => engine.sendInput(touch));

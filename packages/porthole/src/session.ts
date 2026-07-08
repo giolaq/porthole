@@ -17,7 +17,8 @@ import { AndroidKeycode } from "./keycodes.js";
 const execFileAsync = promisify(execFile);
 
 export interface SessionOptions {
-  device: DeviceInfo;
+  device?: DeviceInfo;
+  devices?: SessionDeviceOptions[];
   port: number;
   host: string;
   maxSize?: number;
@@ -29,32 +30,60 @@ export interface SessionOptions {
   forceMjpeg?: boolean;
 }
 
+export interface SessionDeviceOptions {
+  device: DeviceInfo;
+  bootedByUs?: boolean;
+}
+
+interface DeviceRuntime {
+  device: DeviceInfo;
+  engine: Engine | null;
+  restartAttempts: number;
+  stopping: boolean;
+  status: "waiting" | "ok" | "reconnecting" | "dead";
+  bootedByUs: boolean;
+}
+
 export class Session {
-  private engine: Engine | null = null;
   private server: Server | null = null;
-  private attachEngine: ((engine: Engine) => void) | null = null;
-  private restartAttempts = 0;
-  private stopping = false;
-  private status: "waiting" | "ok" | "reconnecting" | "dead" = "waiting";
-  private readonly device: DeviceInfo;
+  private attachEngine: ((deviceId: string, engine: Engine) => void) | null = null;
+  private readonly runtimes = new Map<string, DeviceRuntime>();
+  private readonly defaultSerial: string;
   private readonly port: number;
   private readonly host: string;
   private readonly maxSize: number;
   private readonly maxFps: number;
   private readonly bitrate?: number;
-  private readonly bootedByUs: boolean;
   private readonly detached: boolean;
   private readonly token?: string;
   private readonly forceMjpeg: boolean;
 
   constructor(opts: SessionOptions) {
-    this.device = opts.device;
+    const devices = opts.devices ?? (opts.device ? [{ device: opts.device }] : []);
+    if (devices.length === 0) {
+      throw new Error("At least one device is required.");
+    }
+    for (const entry of devices) {
+      if (!entry.device.serial) {
+        throw new Error(`Device ${entry.device.name} has no serial — is it running?`);
+      }
+      this.runtimes.set(entry.device.serial, {
+        device: entry.device,
+        engine: null,
+        restartAttempts: 0,
+        stopping: false,
+        status: "waiting",
+        bootedByUs: entry.bootedByUs ?? opts.bootedByUs ?? false,
+      });
+    }
+    const first = devices[0]?.device.serial;
+    if (!first) throw new Error("At least one running device is required.");
+    this.defaultSerial = first;
     this.port = opts.port;
     this.host = opts.host;
     this.maxSize = opts.maxSize ?? 1280;
     this.maxFps = opts.maxFps ?? 30;
     this.bitrate = opts.bitrate;
-    this.bootedByUs = opts.bootedByUs ?? false;
     this.detached = opts.detached ?? false;
     this.token =
       opts.token ??
@@ -63,97 +92,105 @@ export class Session {
   }
 
   async start(): Promise<{ url: string }> {
-    if (!this.device.serial) {
-      throw new Error("Device has no serial — is it running?");
-    }
     const clientDir = clientDistPath();
 
     const { server, listen } = createHttpServer({
       port: this.port,
       host: this.host,
       clientDir,
-      getEngine: () => this.engine,
-      getDevice: () => this.device,
-      handleInput: (event) => this.sendInput(event),
+      getEngine: (deviceId) => this.getEngine(deviceId),
+      getDevice: (deviceId) => this.getDevice(deviceId),
+      getDevices: () => this.getDevices(),
+      handleInput: (event, deviceId) => this.sendInput(event, deviceId),
       token: this.token,
       forceMjpeg: this.forceMjpeg,
-      getStatus: () => this.status,
+      getStatus: (deviceId) => this.getStatus(deviceId),
     });
     this.server = server;
 
     const { attachEngine } = createWsServer({
       httpServer: server,
-      getEngine: () => this.engine,
-      getDevice: () => this.device,
+      getEngine: (deviceId) => this.getEngine(deviceId),
+      getDevice: (deviceId) => this.getDevice(deviceId),
+      getDefaultDeviceId: () => this.defaultSerial,
       token: this.token,
     });
     this.attachEngine = attachEngine;
 
-    await this.startEngine();
+    await Promise.all(
+      [...this.runtimes.values()].map((runtime) => this.startEngine(runtime)),
+    );
     await listen();
 
     const baseUrl = `http://${this.host}:${this.port}`;
     const url = this.token ? `${baseUrl}/?token=${this.token}` : baseUrl;
-    await upsertSession({
-      serial: this.device.serial,
-      avdName: this.device.name,
-      profile: this.device.profile,
-      pid: process.pid,
-      port: this.port,
-      host: this.host,
-      url,
-      startedAt: new Date().toISOString(),
-      bootedByUs: this.bootedByUs,
-      detached: this.detached,
-    });
+    const startedAt = new Date().toISOString();
+    for (const runtime of this.runtimes.values()) {
+      if (!runtime.device.serial) continue;
+      await upsertSession({
+        serial: runtime.device.serial,
+        avdName: runtime.device.name,
+        profile: runtime.device.profile,
+        pid: process.pid,
+        port: this.port,
+        host: this.host,
+        url,
+        startedAt,
+        bootedByUs: runtime.bootedByUs,
+        detached: this.detached,
+      });
+    }
 
     return { url };
   }
 
-  private async startEngine(): Promise<void> {
-    if (!this.device.serial) throw new Error("Device has no serial — is it running?");
+  private async startEngine(runtime: DeviceRuntime): Promise<void> {
+    if (!runtime.device.serial) {
+      throw new Error("Device has no serial — is it running?");
+    }
     const engine = new ScrcpyEngine({
-      serial: this.device.serial,
+      serial: runtime.device.serial,
       maxSize: this.maxSize,
       maxFps: this.maxFps,
       bitrate: this.bitrate,
       serverPath: scrcpyServerPath(),
     });
-    this.engine = engine;
+    runtime.engine = engine;
     engine.onClose?.(() => {
-      if (!this.stopping) void this.restartEngine();
+      if (!runtime.stopping) void this.restartEngine(runtime);
     });
     await engine.start();
-    this.status = "ok";
-    this.restartAttempts = 0;
-    this.attachEngine?.(engine);
+    runtime.status = "ok";
+    runtime.restartAttempts = 0;
+    this.attachEngine?.(runtime.device.serial, engine);
   }
 
-  private async restartEngine(): Promise<void> {
-    if (this.restartAttempts >= 3) {
-      this.status = "dead";
+  private async restartEngine(runtime: DeviceRuntime): Promise<void> {
+    if (runtime.restartAttempts >= 3) {
+      runtime.status = "dead";
       return;
     }
-    this.status = "reconnecting";
-    this.restartAttempts++;
-    const delay = 500 * 2 ** (this.restartAttempts - 1);
+    runtime.status = "reconnecting";
+    runtime.restartAttempts++;
+    const delay = 500 * 2 ** (runtime.restartAttempts - 1);
     await new Promise((resolve) => setTimeout(resolve, delay));
     try {
-      await this.engine?.stop();
+      await runtime.engine?.stop();
     } catch {
       // ignore
     }
     try {
-      await this.startEngine();
+      await this.startEngine(runtime);
     } catch {
-      await this.restartEngine();
+      await this.restartEngine(runtime);
     }
   }
 
-  async sendInput(event: InputEvent): Promise<void> {
-    const engine = this.engine;
+  async sendInput(event: InputEvent, deviceId?: string): Promise<void> {
+    const runtime = this.getRuntime(deviceId);
+    const engine = runtime.engine;
     if (!engine) throw new Error("Session not started");
-    if (this.device.profile === "tv") await this.ensureTvAwake();
+    if (runtime.device.profile === "tv") await this.ensureTvAwake(runtime);
     if (event.kind === "gesture") {
       await sendGesture(event, (touch) => engine.sendInput(touch));
       return;
@@ -161,20 +198,35 @@ export class Session {
     await engine.sendInput(event);
   }
 
-  async screenshot(): Promise<Uint8Array> {
-    if (!this.engine) throw new Error("Session not started");
-    return this.engine.screenshot();
+  async screenshot(deviceId?: string): Promise<Uint8Array> {
+    const engine = this.getRuntime(deviceId).engine;
+    if (!engine) throw new Error("Session not started");
+    return engine.screenshot();
   }
 
-  getEngine(): Engine | null {
-    return this.engine;
+  getEngine(deviceId?: string): Engine | null {
+    return this.findRuntime(deviceId)?.engine ?? null;
+  }
+
+  getDevice(deviceId?: string): DeviceInfo | undefined {
+    return this.findRuntime(deviceId)?.device;
+  }
+
+  getDevices(): DeviceInfo[] {
+    return [...this.runtimes.values()].map((runtime) => runtime.device);
+  }
+
+  getStatus(deviceId?: string): DeviceRuntime["status"] {
+    return this.findRuntime(deviceId)?.status ?? "dead";
   }
 
   async stop(): Promise<void> {
-    this.stopping = true;
-    if (this.engine) {
-      await this.engine.stop();
-      this.engine = null;
+    for (const runtime of this.runtimes.values()) {
+      runtime.stopping = true;
+      if (runtime.engine) {
+        await runtime.engine.stop();
+        runtime.engine = null;
+      }
     }
     if (this.server) {
       const server = this.server;
@@ -184,24 +236,37 @@ export class Session {
     await removeSession({ port: this.port, pid: process.pid });
   }
 
-  private async ensureTvAwake(): Promise<void> {
-    if (!this.device.serial) return;
+  private getRuntime(deviceId?: string): DeviceRuntime {
+    const serial = deviceId ?? this.defaultSerial;
+    const runtime = this.runtimes.get(serial);
+    if (!runtime) {
+      throw new Error(`No active device ${serial}.`);
+    }
+    return runtime;
+  }
+
+  private findRuntime(deviceId?: string): DeviceRuntime | undefined {
+    return this.runtimes.get(deviceId ?? this.defaultSerial);
+  }
+
+  private async ensureTvAwake(runtime: DeviceRuntime): Promise<void> {
+    if (!runtime.device.serial) return;
     try {
       const adb = adbBin(findAndroidSdk());
       const { stdout } = await execFileAsync(adb, [
         "-s",
-        this.device.serial,
+        runtime.device.serial,
         "shell",
         "dumpsys",
         "power",
       ]);
       if (/mWakefulness=(Asleep|Dozing)|Display Power:\s*state=OFF/.test(stdout)) {
-        await this.engine?.sendInput({
+        await runtime.engine?.sendInput({
           kind: "key",
           phase: "down",
           keycode: AndroidKeycode.KEYCODE_WAKEUP,
         });
-        await this.engine?.sendInput({
+        await runtime.engine?.sendInput({
           kind: "key",
           phase: "up",
           keycode: AndroidKeycode.KEYCODE_WAKEUP,

@@ -18,6 +18,7 @@ export function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [profile, setProfile] = useState<"phone" | "tv">("phone");
   const [devices, setDevices] = useState<Device[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [logs, setLogs] = useState("");
   const [logFilter, setLogFilter] = useState("");
@@ -31,7 +32,10 @@ export function App() {
   useEffect(() => {
     const pollHealth = async () => {
       try {
-        const res = await fetch("/health");
+        const query = selectedDeviceId
+          ? `?device=${encodeURIComponent(selectedDeviceId)}`
+          : "";
+        const res = await fetch(`/health${query}`);
         const data = (await res.json()) as HealthResponse;
         setHealth(data);
         if (data.status === "ok") {
@@ -46,7 +50,11 @@ export function App() {
     const pollDevices = async () => {
       try {
         const res = await fetch("/api/devices");
-        setDevices((await res.json()) as Device[]);
+        const nextDevices = (await res.json()) as Device[];
+        setDevices(nextDevices);
+        if (!selectedDeviceId) {
+          setSelectedDeviceId(nextDevices[0]?.serial ?? null);
+        }
       } catch {
         setDevices([]);
       }
@@ -60,7 +68,7 @@ export function App() {
       clearInterval(interval);
       clearInterval(deviceInterval);
     };
-  }, []);
+  }, [selectedDeviceId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -69,43 +77,54 @@ export function App() {
   }, [toast]);
 
   useEffect(() => {
+    let disposed = false;
+    let socket: WebSocket | null = null;
     const connect = () => {
+      if (disposed) return;
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${proto}//${window.location.host}/ws`);
-      socket.binaryType = "arraybuffer";
+      const query = selectedDeviceId
+        ? `?device=${encodeURIComponent(selectedDeviceId)}`
+        : "";
+      const nextSocket = new WebSocket(`${proto}//${window.location.host}/ws${query}`);
+      socket = nextSocket;
+      nextSocket.binaryType = "arraybuffer";
 
       // Buffer messages until VideoCanvas takes over
       const earlyMessages: ArrayBuffer[] = [];
       let drained = false;
-      socket.addEventListener("message", (e: MessageEvent) => {
+      nextSocket.addEventListener("message", (e: MessageEvent) => {
         if (!drained) {
           earlyMessages.push(e.data as ArrayBuffer);
         }
       });
-      (socket as unknown as Record<string, unknown>)._earlyMessages = earlyMessages;
-      (socket as unknown as Record<string, unknown>)._markDrained = () => {
+      (nextSocket as unknown as Record<string, unknown>)._earlyMessages = earlyMessages;
+      (nextSocket as unknown as Record<string, unknown>)._markDrained = () => {
         drained = true;
       };
 
-      socket.onopen = () => {
-        setWs(socket);
+      nextSocket.onopen = () => {
+        if (disposed) return;
+        setWs(nextSocket);
         setConnected(true);
       };
 
-      socket.onclose = () => {
+      nextSocket.onclose = () => {
+        if (disposed) return;
         setWs(null);
         setConnected(false);
         reconnectRef.current = setTimeout(connect, 2000);
       };
 
-      socket.onerror = () => socket.close();
+      nextSocket.onerror = () => nextSocket.close();
     };
 
     connect();
     return () => {
+      disposed = true;
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
+      socket?.close();
     };
-  }, []);
+  }, [selectedDeviceId]);
 
   const width = health?.width ?? 1080;
   const height = health?.height ?? 1920;
@@ -133,7 +152,7 @@ export function App() {
 
   const takeScreenshot = async (copy: boolean) => {
     try {
-      const res = await fetch("/screenshot");
+      const res = await fetch(`/screenshot${deviceQuery(selectedDeviceId)}`);
       const blob = await res.blob();
       if (copy && navigator.clipboard && "ClipboardItem" in window) {
         await navigator.clipboard.write([
@@ -157,6 +176,7 @@ export function App() {
   const fetchLogs = async () => {
     try {
       const query = new URLSearchParams({ lines: "300" });
+      if (selectedDeviceId) query.set("device", selectedDeviceId);
       if (logFilter) query.set("filter", logFilter);
       const res = await fetch(`/api/logcat?${query}`);
       const data = (await res.json()) as { logcat?: string };
@@ -175,7 +195,8 @@ export function App() {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (!file) return;
-    const endpoint = file.name.endsWith(".apk") ? "/api/install" : "/api/push";
+    const baseEndpoint = file.name.endsWith(".apk") ? "/api/install" : "/api/push";
+    const endpoint = `${baseEndpoint}${deviceQuery(selectedDeviceId)}`;
     setToast(file.name.endsWith(".apk") ? "Installing APK..." : "Pushing file...");
     try {
       const res = await fetch(endpoint, {
@@ -213,8 +234,16 @@ export function App() {
         <strong>Porthole</strong>
         <DevicePicker
           devices={devices}
-          selected={health?.device ?? null}
-          onSelect={(device) => setToast(`${device.name} selected`)}
+          selected={
+            devices.find((device) => device.serial === selectedDeviceId) ??
+            health?.device ??
+            null
+          }
+          onSelect={(device) => {
+            setSelectedDeviceId(device.serial);
+            setStats(null);
+            setToast(`${device.name} selected`);
+          }}
         />
         <span
           style={{
@@ -281,7 +310,11 @@ export function App() {
           }}
         >
           {videoMode === "mjpeg" ? (
-            <MjpegView width={width} height={height} />
+            <MjpegView
+              width={width}
+              height={height}
+              deviceId={selectedDeviceId ?? undefined}
+            />
           ) : (
             <VideoCanvas ws={ws} width={width} height={height} onStats={setStats} />
           )}
@@ -439,6 +472,10 @@ function inferProfile(
   height: number | undefined,
 ): "phone" | "tv" {
   return width && height && width > height ? "tv" : "phone";
+}
+
+function deviceQuery(deviceId: string | null): string {
+  return deviceId ? `?device=${encodeURIComponent(deviceId)}` : "";
 }
 
 function phoneKeycode(key: string): number | null {

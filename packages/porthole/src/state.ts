@@ -53,12 +53,7 @@ export async function upsertSession(
   path = statePath(),
 ): Promise<void> {
   const state = await readState(path);
-  const sessions = state.sessions.filter(
-    (session) =>
-      session.serial !== record.serial &&
-      session.port !== record.port &&
-      session.pid !== record.pid,
-  );
+  const sessions = state.sessions.filter((session) => session.serial !== record.serial);
   sessions.push(record);
   await writeState({ sessions }, path);
 }

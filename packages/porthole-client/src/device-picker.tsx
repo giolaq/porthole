@@ -15,7 +15,7 @@ export function DevicePicker({ devices, selected, onSelect }: DevicePickerProps)
     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
       {devices.map((d) => (
         <button
-          key={d.name}
+          key={d.serial ?? d.name}
           onClick={() => onSelect(d)}
           style={{
             padding: "4px 8px",

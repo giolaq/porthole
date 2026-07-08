@@ -28,6 +28,7 @@ iOS, physical Android devices, or audio.
 
    ```sh
    porthole start <AVD_NAME> --detach -q
+   porthole start <PHONE_AVD> <TV_AVD> --detach -q
    ```
 
    In GitHub Actions, prefer the bundled repository action so the emulator,
@@ -58,6 +59,14 @@ iOS, physical Android devices, or audio.
    porthole longpress 0.5 0.5
    porthole key 4
    porthole text "hello"
+   ```
+
+   When one Porthole server is streaming multiple emulators, pass
+   `-d <serial>` to target the right device:
+
+   ```sh
+   porthole tap 0.5 0.9 -d emulator-5554
+   porthole remote dpad_down -d emulator-5556
    ```
 
 5. For Android TV, use remote buttons instead of touch:
