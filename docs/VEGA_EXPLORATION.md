@@ -101,10 +101,32 @@ exposes an accessibility dump; `vega device run-cmd` may reach one),
 MP4 recording (no H.264 stream; console `screenrecord start` produces WebM —
 could be offered as-is).
 
+## The sample-app experiment (attempted, blocked by an SDK bug)
+
+We ran the go/no-go experiment on the same day:
+
+- `vega project generate --template helloWorld` → builds cleanly
+  (`vega build --target aarch64` → `portholeprobe_aarch64.vpkg`).
+- `vega run-app` installs it; the launch pipeline works end to end
+  (pkgmgrd resolves the component, LCM accepts the launch, splashservice
+  prepares the app splash).
+- **The app then aborts (signal 6)**: the RN-for-Vega graphics stack calls
+  `KeplerGraphics.getLocalDeviceState()`, which requires
+  `com.amazon.hdmicontrol.service` — and that service **is not installed in
+  the 0.22.5875 VVD image** (`installed-packages` shows only
+  `com.amazon.hdmi.certificate`; `servicergrd` cannot connect). Identical
+  crash with `--gui` and `--no-gui`.
+- Conclusion: the **unmodified Amazon template cannot run on this VVD
+  build** — an SDK image bug/mismatch, not a Porthole limitation. The
+  key-delivery plumbing (QMP `send-key` → `qwerty2` → `inputd`) is verified
+  present; the final "focus visibly moves in an app" check needs a working
+  app, so it waits for an SDK update or a real Vega device.
+
 ## Risks & open items
 
-1. **Input-to-app verification** — build a sample (`vega project`), launch
-   it, confirm `send-key` drives focus. This is the go/no-go experiment.
+1. **Input-to-app verification** — blocked by the SDK bug above; re-run the
+   experiment on the next SDK release (`vega project` sample) or on real
+   hardware. Everything else about the input path is verified.
 2. **Port 5037 collision**: `vda` and `adb` both default to 5037 — running
    Android and Vega tooling simultaneously needs `vda -P <port>` handling.
 3. Screenshot poll rate: console screenshot round-trip needs measuring
@@ -118,5 +140,6 @@ could be offered as-is).
 A one-day spike on this branch: `VegaEngine` with console-screenshot capture
 
 - QMP D-pad input, wired as `porthole start --vega` behind the existing
-  MJPEG path, acceptance-tested against a real installed sample app (item 1
-  above decides everything).
+  MJPEG path. The engine can be built and demoed against the launcher today;
+  the app-level acceptance test re-runs as soon as Amazon ships a VVD image
+  whose own helloWorld template runs.
