@@ -1,3 +1,8 @@
+---
+name: porthole
+description: Boot, stream, and control Android phone/TV emulators headlessly with the porthole CLI or MCP tools — screenshots, touch/D-pad input, semantic UI dumps, logcat, and APK install. Use when asked to run, test, drive, or inspect an Android emulator or AVD, navigate an Android TV app, or verify Android UI state from an agent workflow.
+---
+
 # Porthole Agent Skill
 
 Use Porthole when you need to inspect or control an Android emulator from an

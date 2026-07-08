@@ -27,8 +27,8 @@ porthole/
     porthole-client/        React preview UI (src/)
   docs/
     PRD.md                  source of truth for requirements & milestones
-  skill/
-    SKILL.md                optional agent skill
+  skills/
+    porthole/SKILL.md       Claude Code agent skill (shipped in the npm package)
 ```
 
 The `scrcpy-server` jar is NOT committed. It is fetched from the pinned

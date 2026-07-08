@@ -24,3 +24,10 @@ await cp(
 // without these copies the npm page shows "This package does not have a README".
 await cp(resolve(workspaceRoot, "README.md"), resolve(packageRoot, "README.md"));
 await cp(resolve(workspaceRoot, "LICENSE"), resolve(packageRoot, "LICENSE"));
+
+// Ship the agent skill so users can copy it into .claude/skills/ from
+// node_modules (see README "Agent skill" section).
+await rm(resolve(packageRoot, "skills"), { recursive: true, force: true });
+await cp(resolve(workspaceRoot, "skills"), resolve(packageRoot, "skills"), {
+  recursive: true,
+});

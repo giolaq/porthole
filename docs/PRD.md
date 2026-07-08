@@ -284,7 +284,7 @@ porthole mcp               Run the MCP server on stdio
 - **FR-8.1** `README.md`: install, prerequisites (Android SDK, emulator, adb on
   PATH), CLI reference, MCP setup snippet.
 - **FR-8.2** `CLAUDE.md`: conventions, architecture notes, common gotchas.
-- **FR-8.3** Optional `skill/SKILL.md`: an Anthropic-style skill teaching agents
+- **FR-8.3** Optional `skills/porthole/SKILL.md`: an Anthropic-style skill teaching agents
   the Porthole workflow.
 
 ---

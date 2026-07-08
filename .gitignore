@@ -9,3 +9,4 @@ assets/*
 !assets/porthole-logo.png
 packages/porthole/README.md
 packages/porthole/LICENSE
+packages/porthole/skills/

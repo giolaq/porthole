@@ -38,7 +38,8 @@
     "dist/",
     "!dist/__tests__/",
     "scripts/download-scrcpy-server.mjs",
-    "client-dist/"
+    "client-dist/",
+    "skills/"
   ],
   "engines": {
     "node": ">=20"

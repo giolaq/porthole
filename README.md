@@ -151,6 +151,31 @@ Useful MCP tools: `list_devices`, `boot_device`, `wait_for_boot`,
 `dump_ui`, `get_focused`, `find_element`, `wait_for`, `open_url`, `stop_app`,
 `clear_app`, `get_crashes`, `read_logcat`, and `install_apk`.
 
+## Agent Skill
+
+Porthole ships a [Claude Code agent skill](https://code.claude.com/docs/en/skills)
+(`skills/porthole/`) that teaches agents the full workflow: doctor triage,
+boot/attach, semantic UI assertions, TV navigation, and cleanup.
+
+Install it by copying the skill directory into your skills folder — for the
+current project:
+
+```sh
+mkdir -p .claude/skills
+cp -r node_modules/portholejs/skills/porthole .claude/skills/
+```
+
+or for all your projects:
+
+```sh
+mkdir -p ~/.claude/skills
+cp -r node_modules/portholejs/skills/porthole ~/.claude/skills/
+```
+
+From a clone of this repository, copy `skills/porthole` instead. Claude Code
+picks the skill up automatically; ask it to "test my app on the Android
+emulator" and it will follow the Porthole workflow.
+
 ## Browser UI
 
 The preview shows the active device, stream status, screenshots, copy-to-clipboard,
