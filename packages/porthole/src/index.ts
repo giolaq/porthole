@@ -15,10 +15,14 @@ export type { DeviceInfo } from "./device-manager.js";
 export type { DeviceProfile } from "./profiles.js";
 export type {
   InputEvent,
+  EngineInputEvent,
+  GestureEvent,
   TouchEvent,
   KeyEvent,
+  LongPressGestureEvent,
   TextEvent,
   RemoteEvent,
+  SwipeGestureEvent,
 } from "./input.js";
 export {
   decodeInputEvent,

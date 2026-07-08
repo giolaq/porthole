@@ -5,14 +5,18 @@ import { adbBin, listDevices, findAndroidSdk, bootDevice } from "../device-manag
 import type { RemoteButton } from "../keycodes.js";
 import { ScrcpyEngine } from "../engine/scrcpy-engine.js";
 import type { Engine } from "../engine/types.js";
-import type { InputEvent } from "../input.js";
+import type { EngineInputEvent, InputEvent } from "../input.js";
+import { scrollGesture, sendGesture } from "../gesture.js";
 import { scrcpyServerPath } from "../paths.js";
 import { openUrl, stopApp, clearApp } from "../adb-actions.js";
 import { parseCrashes } from "../crashes.js";
 import { dumpUi, findElement, getFocusedNode, waitForUiText } from "../ui-tree.js";
+import { assertInputAllowed } from "../input-validation.js";
+import type { DeviceProfile } from "../profiles.js";
 
 let engine: Engine | null = null;
 let activeSerial: string | null = null;
+let activeProfile: DeviceProfile | null = null;
 
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
@@ -105,6 +109,7 @@ export async function startMcpServer(): Promise<void> {
       });
       await engine.start();
       activeSerial = serial;
+      activeProfile = device.profile;
 
       return {
         content: [
@@ -132,14 +137,105 @@ export async function startMcpServer(): Promise<void> {
           ],
         };
       }
-      const events: InputEvent[] = [
+      const activeEngine = engine;
+      const events: EngineInputEvent[] = [
         { kind: "touch", phase: "down", x, y },
         { kind: "touch", phase: "up", x, y },
       ];
       for (const ev of events) {
-        await engine.sendInput(ev);
+        await activeEngine.sendInput(ev);
       }
       return { content: [{ type: "text", text: `Tapped at (${x}, ${y})` }] };
+    },
+  );
+
+  server.tool(
+    "swipe",
+    "Swipe between normalized 0..1 coordinates on a phone profile",
+    {
+      x1: z.number().min(0).max(1).describe("Start X coordinate (0..1)"),
+      y1: z.number().min(0).max(1).describe("Start Y coordinate (0..1)"),
+      x2: z.number().min(0).max(1).describe("End X coordinate (0..1)"),
+      y2: z.number().min(0).max(1).describe("End Y coordinate (0..1)"),
+      durationMs: z.number().positive().optional().describe("Gesture duration"),
+      steps: z.number().int().positive().optional().describe("Move event count"),
+    },
+    async ({ x1, y1, x2, y2, durationMs, steps }) => {
+      if (!engine) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      const activeEngine = engine;
+      const event: InputEvent = {
+        kind: "gesture",
+        type: "swipe",
+        x1,
+        y1,
+        x2,
+        y2,
+        ...(durationMs === undefined ? {} : { durationMs }),
+        ...(steps === undefined ? {} : { steps }),
+      };
+      if (activeProfile) assertInputAllowed(activeProfile, event);
+      await sendGesture(event, (touch) => activeEngine.sendInput(touch));
+      return { content: [{ type: "text", text: "Swiped" }] };
+    },
+  );
+
+  server.tool(
+    "long_press",
+    "Long-press normalized 0..1 phone coordinates",
+    {
+      x: z.number().min(0).max(1).describe("X coordinate (0..1)"),
+      y: z.number().min(0).max(1).describe("Y coordinate (0..1)"),
+      durationMs: z.number().positive().optional().describe("Hold duration"),
+    },
+    async ({ x, y, durationMs }) => {
+      if (!engine) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      const activeEngine = engine;
+      const event: InputEvent = {
+        kind: "gesture",
+        type: "longpress",
+        x1: x,
+        y1: y,
+        ...(durationMs === undefined ? {} : { durationMs }),
+      };
+      if (activeProfile) assertInputAllowed(activeProfile, event);
+      await sendGesture(event, (touch) => activeEngine.sendInput(touch));
+      return { content: [{ type: "text", text: "Long-pressed" }] };
+    },
+  );
+
+  server.tool(
+    "scroll",
+    "Scroll a phone screen by expanding to a centered swipe",
+    {
+      direction: z.enum(["up", "down", "left", "right"]).describe("Scroll direction"),
+      amount: z.number().min(0).max(1).optional().describe("Normalized distance"),
+      durationMs: z.number().positive().optional().describe("Gesture duration"),
+    },
+    async ({ direction, amount, durationMs }) => {
+      if (!engine) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      const activeEngine = engine;
+      const event = scrollGesture(direction, amount, durationMs);
+      if (activeProfile) assertInputAllowed(activeProfile, event);
+      await sendGesture(event, (touch) => activeEngine.sendInput(touch));
+      return { content: [{ type: "text", text: `Scrolled ${direction}` }] };
     },
   );
 

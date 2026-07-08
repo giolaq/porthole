@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { InputEvent } from "../input.js";
+import { assertInputAllowed } from "../input-validation.js";
 import { REMOTE_BUTTON_TO_KEYCODE } from "../keycodes.js";
 
 describe("InputEvent types", () => {
@@ -30,6 +31,17 @@ describe("InputEvent types", () => {
     const event: InputEvent = { kind: "touch", phase: "down", x: 0.5, y: 0.5 };
     const shouldReject = profile === "tv" && event.kind === "touch";
     expect(shouldReject).toBe(true);
+  });
+
+  it("rejects gestures on tv profile", () => {
+    expect(() =>
+      assertInputAllowed("tv", {
+        kind: "gesture",
+        type: "longpress",
+        x1: 0.5,
+        y1: 0.5,
+      }),
+    ).toThrow("Touch and gesture input");
   });
 
   it("phone profile accepts all event kinds", () => {

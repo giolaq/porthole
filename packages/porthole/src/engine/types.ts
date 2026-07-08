@@ -1,4 +1,4 @@
-import type { InputEvent, VideoChunk } from "../protocol.js";
+import type { EngineInputEvent, VideoChunk } from "../protocol.js";
 
 export interface EngineMetadata {
   codec: "h264";
@@ -11,7 +11,7 @@ export interface Engine {
   stop(): Promise<void>;
   onVideoChunk(cb: (chunk: VideoChunk) => void): void;
   onClose?(cb: (error?: Error) => void): void;
-  sendInput(event: InputEvent): Promise<void>;
+  sendInput(event: EngineInputEvent): Promise<void>;
   screenshot(): Promise<Uint8Array>;
   captureFrame?(): Promise<{ data: Uint8Array; mime: string }>;
   readonly metadata: EngineMetadata | null;

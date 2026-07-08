@@ -39,7 +39,29 @@ export interface RemoteEvent {
   button: RemoteButton;
 }
 
-export type InputEvent = TouchEvent | KeyEvent | TextEvent | RemoteEvent;
+export interface SwipeGestureEvent {
+  kind: "gesture";
+  type: "swipe";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  durationMs?: number;
+  steps?: number;
+}
+
+export interface LongPressGestureEvent {
+  kind: "gesture";
+  type: "longpress";
+  x1: number;
+  y1: number;
+  durationMs?: number;
+  steps?: number;
+}
+
+export type GestureEvent = SwipeGestureEvent | LongPressGestureEvent;
+export type EngineInputEvent = TouchEvent | KeyEvent | TextEvent | RemoteEvent;
+export type InputEvent = EngineInputEvent | GestureEvent;
 
 export interface VideoChunk {
   type: "config" | "frame";
@@ -170,6 +192,40 @@ export function decodeInputEvent(value: unknown): InputEvent {
     return { kind: "remote", button: event.button };
   }
 
+  if (event.kind === "gesture") {
+    if (event.type !== "swipe" && event.type !== "longpress") {
+      throw new Error("Gesture type must be swipe or longpress.");
+    }
+    if (!isNormalized(event.x1) || !isNormalized(event.y1)) {
+      throw new Error("Gesture start coordinates must be numbers in 0..1.");
+    }
+    const durationMs = optionalPositiveNumber(event.durationMs, "Gesture duration");
+    const steps = optionalPositiveInteger(event.steps, "Gesture steps");
+    if (event.type === "longpress") {
+      return {
+        kind: "gesture",
+        type: "longpress",
+        x1: event.x1,
+        y1: event.y1,
+        ...(durationMs === undefined ? {} : { durationMs }),
+        ...(steps === undefined ? {} : { steps }),
+      };
+    }
+    if (!isNormalized(event.x2) || !isNormalized(event.y2)) {
+      throw new Error("Gesture end coordinates must be numbers in 0..1.");
+    }
+    return {
+      kind: "gesture",
+      type: "swipe",
+      x1: event.x1,
+      y1: event.y1,
+      x2: event.x2,
+      y2: event.y2,
+      ...(durationMs === undefined ? {} : { durationMs }),
+      ...(steps === undefined ? {} : { steps }),
+    };
+  }
+
   throw new Error("Unknown input event kind.");
 }
 
@@ -183,4 +239,20 @@ function isNormalized(value: unknown): value is number {
 
 function isRemoteButton(value: string): value is RemoteButton {
   return REMOTE_BUTTON_SET.has(value);
+}
+
+function optionalPositiveNumber(value: unknown, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a positive number.`);
+  }
+  return value;
+}
+
+function optionalPositiveInteger(value: unknown, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || (value as number) <= 0) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return value as number;
 }

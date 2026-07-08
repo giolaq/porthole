@@ -30,6 +30,7 @@ import { readState } from "./state.js";
 import { runCliAction } from "./cli-errors.js";
 import { runDoctor } from "./doctor.js";
 import { ensurePortFree } from "./port-check.js";
+import { scrollGesture, type ScrollDirection } from "./gesture.js";
 
 const program = new Command();
 
@@ -325,6 +326,110 @@ program
       printResult(opts.quiet, { ok: true, session, event: "tap" }, `Tapped ${nx},${ny}`);
     });
   });
+
+program
+  .command("swipe <x1> <y1> <x2> <y2>")
+  .description("Swipe between normalized 0..1 phone coordinates")
+  .option("--duration <ms>", "Gesture duration in milliseconds")
+  .option("--steps <count>", "Number of move events")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action(
+    (
+      x1: string,
+      y1: string,
+      x2: string,
+      y2: string,
+      opts: { duration?: string; steps?: string; port?: string; quiet?: boolean },
+    ) => {
+      void runCliAction(opts, async () => {
+        const event = {
+          kind: "gesture" as const,
+          type: "swipe" as const,
+          x1: parseNormalized(x1, "x1"),
+          y1: parseNormalized(y1, "y1"),
+          x2: parseNormalized(x2, "x2"),
+          y2: parseNormalized(y2, "y2"),
+          ...(opts.duration === undefined
+            ? {}
+            : { durationMs: parsePositiveNumber(opts.duration, "duration") }),
+          ...(opts.steps === undefined
+            ? {}
+            : { steps: parsePositiveInteger(opts.steps, "steps") }),
+        };
+        const session = await sendSessionInput(event, {
+          port: parseOptionalPort(opts.port),
+        });
+        printResult(opts.quiet, { ok: true, session, event }, "Swiped");
+      });
+    },
+  );
+
+program
+  .command("longpress <x> <y>")
+  .alias("long-press")
+  .description("Long-press normalized 0..1 phone coordinates")
+  .option("--duration <ms>", "Hold duration in milliseconds")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action(
+    (
+      x: string,
+      y: string,
+      opts: { duration?: string; port?: string; quiet?: boolean },
+    ) => {
+      void runCliAction(opts, async () => {
+        const event = {
+          kind: "gesture" as const,
+          type: "longpress" as const,
+          x1: parseNormalized(x, "x"),
+          y1: parseNormalized(y, "y"),
+          ...(opts.duration === undefined
+            ? {}
+            : { durationMs: parsePositiveNumber(opts.duration, "duration") }),
+        };
+        const session = await sendSessionInput(event, {
+          port: parseOptionalPort(opts.port),
+        });
+        printResult(opts.quiet, { ok: true, session, event }, "Long-pressed");
+      });
+    },
+  );
+
+program
+  .command("scroll <direction>")
+  .description("Scroll a phone screen: up, down, left, or right")
+  .option("--amount <value>", "Normalized scroll amount", "0.5")
+  .option("--duration <ms>", "Gesture duration in milliseconds")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action(
+    (
+      direction: string,
+      opts: { amount: string; duration?: string; port?: string; quiet?: boolean },
+    ) => {
+      void runCliAction(opts, async () => {
+        if (!isScrollDirection(direction)) {
+          throw new Error("Scroll direction must be up, down, left, or right");
+        }
+        const event = scrollGesture(
+          direction,
+          parseNormalized(opts.amount, "amount"),
+          opts.duration === undefined
+            ? undefined
+            : parsePositiveNumber(opts.duration, "duration"),
+        );
+        const session = await sendSessionInput(event, {
+          port: parseOptionalPort(opts.port),
+        });
+        printResult(
+          opts.quiet,
+          { ok: true, session, direction, event },
+          `Scrolled ${direction}`,
+        );
+      });
+    },
+  );
 
 program
   .command("key <keycode>")
@@ -660,6 +765,34 @@ function parsePort(port: string): number {
     throw new Error(`Invalid port: ${port}`);
   }
   return parsed;
+}
+
+function parseNormalized(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new Error(`${label} must be a number in 0..1`);
+  }
+  return parsed;
+}
+
+function parsePositiveNumber(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive number`);
+  }
+  return parsed;
+}
+
+function parsePositiveInteger(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function isScrollDirection(value: string): value is ScrollDirection {
+  return value === "up" || value === "down" || value === "left" || value === "right";
 }
 
 function printResult(quiet: boolean | undefined, json: unknown, text: string): void {

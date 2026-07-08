@@ -8,6 +8,7 @@ import { createHttpServer } from "./server/http.js";
 import { createWsServer } from "./server/ws.js";
 import type { DeviceInfo } from "./device-manager.js";
 import type { InputEvent } from "./input.js";
+import { sendGesture } from "./gesture.js";
 import { removeSession, upsertSession } from "./state.js";
 import { clientDistPath, scrcpyServerPath } from "./paths.js";
 import { adbBin, findAndroidSdk } from "./device-manager.js";
@@ -150,9 +151,14 @@ export class Session {
   }
 
   async sendInput(event: InputEvent): Promise<void> {
-    if (!this.engine) throw new Error("Session not started");
+    const engine = this.engine;
+    if (!engine) throw new Error("Session not started");
     if (this.device.profile === "tv") await this.ensureTvAwake();
-    await this.engine.sendInput(event);
+    if (event.kind === "gesture") {
+      await sendGesture(event, (touch) => engine.sendInput(touch));
+      return;
+    }
+    await engine.sendInput(event);
   }
 
   async screenshot(): Promise<Uint8Array> {

@@ -35,4 +35,27 @@ describe("input protocol", () => {
       decodeInputEventJson('{"kind":"touch","phase":"down","x":2,"y":0}'),
     ).toThrow("Touch coordinates");
   });
+
+  it("decodes swipe gestures", () => {
+    expect(
+      decodeInputEventJson(
+        '{"kind":"gesture","type":"swipe","x1":0.1,"y1":0.2,"x2":0.3,"y2":0.4,"durationMs":250,"steps":4}',
+      ),
+    ).toEqual({
+      kind: "gesture",
+      type: "swipe",
+      x1: 0.1,
+      y1: 0.2,
+      x2: 0.3,
+      y2: 0.4,
+      durationMs: 250,
+      steps: 4,
+    });
+  });
+
+  it("rejects swipe gestures without endpoints", () => {
+    expect(() =>
+      decodeInputEventJson('{"kind":"gesture","type":"swipe","x1":0.1,"y1":0.2}'),
+    ).toThrow("Gesture end coordinates");
+  });
 });

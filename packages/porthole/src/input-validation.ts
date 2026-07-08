@@ -7,7 +7,7 @@ export function parseInputEvent(value: unknown): InputEvent {
 }
 
 export function assertInputAllowed(profile: DeviceProfile, event: InputEvent): void {
-  if (profile === "tv" && event.kind === "touch") {
-    throw new Error("Touch input is not available for TV profile sessions.");
+  if (profile === "tv" && (event.kind === "touch" || event.kind === "gesture")) {
+    throw new Error("Touch and gesture input is not available for TV profile sessions.");
   }
 }

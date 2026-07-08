@@ -5,6 +5,7 @@ import { assertInputAllowed, parseInputEvent } from "../input-validation.js";
 import type { DeviceInfo } from "../device-manager.js";
 import { encodeVideoPacket } from "../protocol.js";
 import { debugLog } from "../log.js";
+import { sendGesture } from "../gesture.js";
 
 export interface WsServerOptions {
   httpServer: Server;
@@ -63,7 +64,11 @@ export function createWsServer(opts: WsServerOptions) {
         const event = parseInputEvent(JSON.parse(data.toString()));
         const device = getDevice?.();
         if (device) assertInputAllowed(device.profile, event);
-        void engine.sendInput(event);
+        if (event.kind === "gesture") {
+          void sendGesture(event, (touch) => engine.sendInput(touch));
+        } else {
+          void engine.sendInput(event);
+        }
       } catch {
         debugLog("ws", "ignored invalid input message");
         // Invalid message, ignore

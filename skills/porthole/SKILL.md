@@ -40,6 +40,9 @@ iOS, physical Android devices, or audio.
 
    ```sh
    porthole tap 0.5 0.9
+   porthole scroll down
+   porthole swipe 0.5 0.85 0.5 0.2
+   porthole longpress 0.5 0.5
    porthole key 4
    porthole text "hello"
    ```
@@ -94,7 +97,7 @@ When MCP is configured, use:
 - `dump_ui`, `get_focused`, and `wait_for` for semantic assertions
 - `get_crashes` after risky actions
 - `remote` for TV navigation
-- `tap` only for phone profiles
+- `tap`, `swipe`, `scroll`, and `long_press` only for phone profiles
 - `read_logcat` to diagnose crashes or focus issues
 - `install_apk` to load a freshly built APK
 

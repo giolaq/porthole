@@ -78,26 +78,29 @@ npx portholejs kill -q
 
 ## CLI Reference
 
-| Command                             | Purpose                                             |
-| ----------------------------------- | --------------------------------------------------- |
-| `porthole start [avd]`              | Boot or attach and serve the browser preview        |
-| `porthole list`                     | List AVDs, running emulators, and known sessions    |
-| `porthole kill [avd]`               | Stop emulators Porthole booted and detached servers |
-| `porthole tap <x> <y>`              | Touch normalized phone coordinates from `0..1`      |
-| `porthole key <keycode>`            | Send an Android keycode down/up pair                |
-| `porthole remote <button>`          | Press a TV D-pad/media button                       |
-| `porthole text "<string>"`          | Type text into the active session                   |
-| `porthole screenshot [-o file.png]` | Save a PNG screenshot                               |
-| `porthole focused`                  | Print the currently focused UI node                 |
-| `porthole dump-ui [--filter text]`  | Dump the Android UI hierarchy                       |
-| `porthole wait-for <text>`          | Wait until UI text appears                          |
-| `porthole open-url <url>`           | Open a URL or Android deep link                     |
-| `porthole stop-app <package>`       | Force-stop an app                                   |
-| `porthole clear-app <package>`      | Clear app data                                      |
-| `porthole rotate <orientation>`     | Rotate a phone emulator                             |
-| `porthole emu <args...>`            | Pass through to `adb emu`                           |
-| `porthole doctor`                   | Diagnose Node/SDK/adb/AVD/session problems          |
-| `porthole mcp`                      | Run the MCP server over stdio                       |
+| Command                              | Purpose                                             |
+| ------------------------------------ | --------------------------------------------------- |
+| `porthole start [avd]`               | Boot or attach and serve the browser preview        |
+| `porthole list`                      | List AVDs, running emulators, and known sessions    |
+| `porthole kill [avd]`                | Stop emulators Porthole booted and detached servers |
+| `porthole tap <x> <y>`               | Touch normalized phone coordinates from `0..1`      |
+| `porthole swipe <x1> <y1> <x2> <y2>` | Swipe between normalized phone coordinates          |
+| `porthole longpress <x> <y>`         | Long-press normalized phone coordinates             |
+| `porthole scroll <direction>`        | Scroll phone content up, down, left, or right       |
+| `porthole key <keycode>`             | Send an Android keycode down/up pair                |
+| `porthole remote <button>`           | Press a TV D-pad/media button                       |
+| `porthole text "<string>"`           | Type text into the active session                   |
+| `porthole screenshot [-o file.png]`  | Save a PNG screenshot                               |
+| `porthole focused`                   | Print the currently focused UI node                 |
+| `porthole dump-ui [--filter text]`   | Dump the Android UI hierarchy                       |
+| `porthole wait-for <text>`           | Wait until UI text appears                          |
+| `porthole open-url <url>`            | Open a URL or Android deep link                     |
+| `porthole stop-app <package>`        | Force-stop an app                                   |
+| `porthole clear-app <package>`       | Clear app data                                      |
+| `porthole rotate <orientation>`      | Rotate a phone emulator                             |
+| `porthole emu <args...>`             | Pass through to `adb emu`                           |
+| `porthole doctor`                    | Diagnose Node/SDK/adb/AVD/session problems          |
+| `porthole mcp`                       | Run the MCP server over stdio                       |
 
 Common options:
 
@@ -147,7 +150,8 @@ claude mcp add porthole -- npx portholejs mcp
 ```
 
 Useful MCP tools: `list_devices`, `boot_device`, `wait_for_boot`,
-`attach_device`, `tap`, `key`, `remote`, `type_text`, `screenshot`,
+`attach_device`, `tap`, `swipe`, `long_press`, `scroll`, `key`, `remote`,
+`type_text`, `screenshot`,
 `dump_ui`, `get_focused`, `find_element`, `wait_for`, `open_url`, `stop_app`,
 `clear_app`, `get_crashes`, `read_logcat`, and `install_apk`.
 

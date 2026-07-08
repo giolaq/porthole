@@ -16,7 +16,7 @@ import type {
   MaybeConsumable,
   ReadableStream as YumeReadableStream,
 } from "@yume-chan/stream-extra";
-import type { InputEvent } from "../input.js";
+import type { EngineInputEvent } from "../input.js";
 import { REMOTE_BUTTON_TO_KEYCODE } from "../keycodes.js";
 import { debugLog } from "../log.js";
 import type { Engine, EngineMetadata, VideoChunk } from "./types.js";
@@ -157,7 +157,7 @@ export class ScrcpyEngine implements Engine {
     this.closeCallbacks.push(cb);
   }
 
-  async sendInput(event: InputEvent): Promise<void> {
+  async sendInput(event: EngineInputEvent): Promise<void> {
     if (!this.controller || !this._metadata) return;
 
     switch (event.kind) {

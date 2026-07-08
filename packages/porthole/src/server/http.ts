@@ -8,6 +8,7 @@ import { adbBin, findAndroidSdk, listDevices } from "../device-manager.js";
 import type { Engine } from "../engine/types.js";
 import type { InputEvent } from "../input.js";
 import { assertInputAllowed, parseInputEvent } from "../input-validation.js";
+import { sendGesture } from "../gesture.js";
 import type { DeviceInfo } from "../device-manager.js";
 import { readState } from "../state.js";
 import { MjpegPoller } from "./mjpeg.js";
@@ -148,6 +149,9 @@ export function createHttpServer(opts: HttpServerOptions) {
         }
         if (handleInput) {
           await handleInput(event);
+        } else if (event.kind === "gesture") {
+          if (!engine) throw new Error("No active engine.");
+          await sendGesture(event, (touch) => engine.sendInput(touch));
         } else {
           await engine?.sendInput(event);
         }
