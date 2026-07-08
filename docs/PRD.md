@@ -70,7 +70,8 @@ D-pad remote, which no lightweight tool offers.
 - **Physical Android devices** — the scrcpy engine technically supports them,
   but v1 neither targets nor tests them. Do not add device-specific code paths.
 - **Audio** forwarding.
-- **Screen recording to file.**
+- **Screen recording to file**, except pure H.264-to-MP4 session recording added
+  by `docs/CODEX_PLAN_3.md` Track R.
 - Wear OS / Android Auto profiles.
 - Heavyweight auth/accounts — only a simple shared token for LAN exposure (§8.7).
 

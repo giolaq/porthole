@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -16,10 +16,14 @@ import { assertInputAllowed } from "../input-validation.js";
 import type { DeviceProfile } from "../profiles.js";
 import { comparePngScreens, parseDiffRegion } from "../screen-diff.js";
 import { focusOn } from "../focus-navigation.js";
+import { H264Recorder } from "../recording.js";
+import { encodeVideoPacket } from "../protocol.js";
 
 let engine: Engine | null = null;
 let activeSerial: string | null = null;
 let activeProfile: DeviceProfile | null = null;
+let activeRecording: { recorder: H264Recorder; path: string; startedAt: number } | null =
+  null;
 
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
@@ -336,6 +340,55 @@ export async function startMcpServer(): Promise<void> {
       };
     },
   );
+
+  server.tool(
+    "start_recording",
+    "Start recording the active H.264 stream to MP4",
+    { path: z.string().describe("Output MP4 path") },
+    async ({ path }) => {
+      if (!engine?.metadata) {
+        return {
+          content: [
+            { type: "text", text: "No active session. Call attach_device first." },
+          ],
+        };
+      }
+      if (activeRecording) {
+        return { content: [{ type: "text", text: "Recording is already active." }] };
+      }
+      const recorder = new H264Recorder(engine.metadata.width, engine.metadata.height);
+      activeRecording = { recorder, path, startedAt: Date.now() };
+      engine.onVideoChunk((chunk) => {
+        if (activeRecording?.recorder !== recorder) return;
+        recorder.addPacket(encodeVideoPacket(chunk));
+      });
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, path }) }] };
+    },
+  );
+
+  server.tool("stop_recording", "Stop recording and write the MP4 file", {}, async () => {
+    if (!activeRecording) {
+      return { content: [{ type: "text", text: "No active recording." }] };
+    }
+    const recording = activeRecording;
+    activeRecording = null;
+    const durationMs = Date.now() - recording.startedAt;
+    const mp4 = recording.recorder.finalize(durationMs);
+    await writeFile(recording.path, mp4);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            ok: true,
+            path: recording.path,
+            samples: recording.recorder.sampleCount,
+            durationMs,
+          }),
+        },
+      ],
+    };
+  });
 
   server.tool(
     "assert_screen",

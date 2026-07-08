@@ -92,6 +92,7 @@ npx portholejs kill -q
 | `porthole text "<string>"`           | Type text into the active session                   |
 | `porthole screenshot [-o file.png]`  | Save a PNG screenshot                               |
 | `porthole assert-screen <png>`       | Compare the current screen with a PNG baseline      |
+| `porthole record <out.mp4>`          | Record the current H.264 stream to MP4              |
 | `porthole focused`                   | Print the currently focused UI node                 |
 | `porthole focus-on <text>`           | Move TV D-pad focus to matching text                |
 | `porthole dump-ui [--filter text]`   | Dump the Android UI hierarchy                       |
@@ -153,7 +154,7 @@ claude mcp add porthole -- npx portholejs mcp
 
 Useful MCP tools: `list_devices`, `boot_device`, `wait_for_boot`,
 `attach_device`, `tap`, `swipe`, `long_press`, `scroll`, `key`, `remote`,
-`type_text`, `screenshot`, `assert_screen`,
+`type_text`, `screenshot`, `assert_screen`, `start_recording`, `stop_recording`,
 `dump_ui`, `get_focused`, `focus_on`, `find_element`, `wait_for`, `open_url`,
 `stop_app`, `clear_app`, `get_crashes`, `read_logcat`, and `install_apk`.
 

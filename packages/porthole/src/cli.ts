@@ -33,6 +33,7 @@ import { runDoctor } from "./doctor.js";
 import { ensurePortFree } from "./port-check.js";
 import { scrollGesture, type ScrollDirection } from "./gesture.js";
 import { comparePngScreens, parseDiffRegion } from "./screen-diff.js";
+import { recordSession } from "./recording.js";
 
 const program = new Command();
 
@@ -557,6 +558,26 @@ program
   );
 
 program
+  .command("record <output>")
+  .description("Record the current H.264 stream to an MP4 file")
+  .option("--duration <duration>", "Recording duration, e.g. 30s or 1500ms")
+  .option("-p, --port <port>", "Session port")
+  .option("-q, --quiet", "JSON output")
+  .action(
+    (output: string, opts: { duration?: string; port?: string; quiet?: boolean }) => {
+      void runCliAction(opts, async () => {
+        const result = await recordSession({
+          output,
+          durationMs:
+            opts.duration === undefined ? undefined : parseDurationMs(opts.duration),
+          port: parseOptionalPort(opts.port),
+        });
+        printResult(opts.quiet, result, `Recorded ${result.path}`);
+      });
+    },
+  );
+
+program
   .command("rotate <orientation>")
   .description("Rotate a phone session: portrait, landscape, left, or right")
   .option("-p, --port <port>", "Session port")
@@ -874,6 +895,16 @@ function parseRatio(value: string, label: string): number {
     throw new Error(`${label} must be a number in 0..1`);
   }
   return parsed;
+}
+
+function parseDurationMs(value: string): number {
+  const match = /^(\d+(?:\.\d+)?)(ms|s)?$/.exec(value);
+  if (!match) throw new Error("duration must look like 1500ms or 30s");
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("duration must be a positive number");
+  }
+  return Math.round(amount * (match[2] === "ms" ? 1 : 1000));
 }
 
 function isScrollDirection(value: string): value is ScrollDirection {
