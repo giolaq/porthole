@@ -89,7 +89,7 @@ export function splitAnnexBNals(data: Uint8Array): Uint8Array[] {
 }
 
 export function hasMp4Box(data: Uint8Array, type: string): boolean {
-  for (let offset = 0; offset + 8 <= data.byteLength; ) {
+  for (let offset = 0; offset + 8 <= data.byteLength;) {
     const size = readU32(data, offset);
     const boxType = new TextDecoder().decode(data.subarray(offset + 4, offset + 8));
     if (boxType === type) return true;
