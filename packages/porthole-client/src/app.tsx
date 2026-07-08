@@ -4,23 +4,13 @@ import { TouchOverlay } from "./touch-overlay.js";
 import { TvRemote } from "./tv-remote.js";
 import { DevicePicker } from "./device-picker.js";
 import { MjpegView } from "./mjpeg-view.js";
+import {
+  encodeInputEvent,
+  type HealthResponse,
+  type InputEvent,
+} from "portholejs/protocol";
 
-interface HealthResponse {
-  status: "waiting" | "ok" | "reconnecting" | "dead";
-  codec?: string;
-  width?: number;
-  height?: number;
-  device?: Device;
-  preferredVideoMode?: "webcodecs" | "mjpeg";
-  videoModes?: Array<"webcodecs" | "mjpeg">;
-}
-
-interface Device {
-  name: string;
-  serial: string | null;
-  profile: "phone" | "tv";
-  state: "running" | "stopped" | "offline";
-}
+type Device = NonNullable<HealthResponse["device"]>;
 
 export function App() {
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -176,9 +166,9 @@ export function App() {
     }
   };
 
-  const sendInput = (event: unknown) => {
+  const sendInput = (event: InputEvent) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify(event));
+    ws.send(encodeInputEvent(event));
   };
 
   const handleDrop = async (event: React.DragEvent) => {
@@ -429,7 +419,7 @@ function PhoneButton({
 }: {
   label: string;
   keycode: number;
-  sendInput: (event: unknown) => void;
+  sendInput: (event: InputEvent) => void;
 }) {
   return (
     <button

@@ -8,7 +8,7 @@
     "packages/porthole-client"
   ],
   "scripts": {
-    "build": "npm run build -w porthole-client && npm run build -w portholejs",
+    "build": "npm run build:ts -w portholejs && npm run build -w porthole-client && npm run copy-package-assets -w portholejs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . && prettier --check .",

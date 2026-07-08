@@ -1,14 +1,9 @@
-interface Device {
-  name: string;
-  serial: string | null;
-  profile: "phone" | "tv";
-  state: "running" | "stopped" | "offline";
-}
+import type { ProtocolDevice } from "portholejs/protocol";
 
 interface DevicePickerProps {
-  devices: Device[];
-  selected: Device | null;
-  onSelect: (device: Device) => void;
+  devices: ProtocolDevice[];
+  selected: ProtocolDevice | null;
+  onSelect: (device: ProtocolDevice) => void;
 }
 
 export function DevicePicker({ devices, selected, onSelect }: DevicePickerProps) {

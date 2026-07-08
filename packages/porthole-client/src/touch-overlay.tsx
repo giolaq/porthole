@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { encodeInputEvent, type TouchEvent } from "portholejs/protocol";
 
 interface TouchOverlayProps {
   ws: WebSocket | null;
@@ -6,12 +7,12 @@ interface TouchOverlayProps {
 
 export function TouchOverlay({ ws }: TouchOverlayProps) {
   const send = useCallback(
-    (phase: "down" | "move" | "up", e: React.PointerEvent) => {
+    (phase: TouchEvent["phase"], e: React.PointerEvent) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
-      ws.send(JSON.stringify({ kind: "touch", phase, x, y }));
+      ws.send(encodeInputEvent({ kind: "touch", phase, x, y }));
     },
     [ws],
   );

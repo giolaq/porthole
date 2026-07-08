@@ -20,6 +20,22 @@ export type {
   TextEvent,
   RemoteEvent,
 } from "./input.js";
+export {
+  decodeInputEvent,
+  decodeInputEventJson,
+  decodeVideoPacket,
+  encodeInputEvent,
+  encodeVideoPacket,
+  REMOTE_BUTTONS,
+} from "./protocol.js";
+export type {
+  DecodedWsPacket,
+  HealthResponse,
+  InputResponse,
+  ProtocolDevice,
+  VideoMode,
+  WsPacketType,
+} from "./protocol.js";
 export type { Engine, EngineMetadata, VideoChunk } from "./engine/types.js";
 export { AndroidKeycode, REMOTE_BUTTON_TO_KEYCODE } from "./keycodes.js";
 export type { RemoteButton } from "./keycodes.js";

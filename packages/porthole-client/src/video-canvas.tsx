@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { decodeVideoPacket } from "portholejs/protocol";
 
 interface VideoCanvasProps {
   ws: WebSocket | null;
@@ -110,9 +111,9 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
     const processMessage = (data: ArrayBuffer) => {
       if (!decoder || decoder.state === "closed") return;
 
-      const packet = decodePacket(data);
+      const packet = decodeVideoPacket(data);
       const type = packet.type;
-      const payload = packet.payload;
+      const payload = packet.data;
       windowBytes += payload.byteLength;
 
       if (type === "config") {
@@ -199,22 +200,4 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
       style={{ maxWidth: "100%", height: "auto", display: "block" }}
     />
   );
-}
-
-function decodePacket(data: ArrayBuffer): {
-  type: "config" | "delta" | "key";
-  timestamp: number;
-  payload: Uint8Array;
-} {
-  const view = new DataView(data);
-  const rawType = view.getUint8(0);
-  const hasV2Header = data.byteLength >= 13;
-  const length = view.getUint32(1);
-  const timestamp = hasV2Header ? view.getFloat64(5) : 0;
-  const offset = hasV2Header ? 13 : 5;
-  return {
-    type: rawType === 0 ? "config" : rawType === 2 ? "key" : "delta",
-    timestamp,
-    payload: new Uint8Array(data, offset, length),
-  };
 }

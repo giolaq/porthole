@@ -1,19 +1,5 @@
 import { useCallback, useEffect } from "react";
-
-type RemoteButton =
-  | "dpad_up"
-  | "dpad_down"
-  | "dpad_left"
-  | "dpad_right"
-  | "select"
-  | "back"
-  | "home"
-  | "menu"
-  | "play_pause"
-  | "rewind"
-  | "fast_forward"
-  | "volume_up"
-  | "volume_down";
+import { encodeInputEvent, type RemoteButton } from "portholejs/protocol";
 
 interface TvRemoteProps {
   ws: WebSocket | null;
@@ -33,7 +19,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
   const press = useCallback(
     (button: RemoteButton) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ kind: "remote", button }));
+      ws.send(encodeInputEvent({ kind: "remote", button }));
     },
     [ws],
   );

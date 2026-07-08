@@ -1,11 +1,4 @@
-import type { InputEvent } from "../input.js";
-
-export interface VideoChunk {
-  type: "config" | "frame";
-  data: Uint8Array;
-  timestamp?: number;
-  keyframe?: boolean;
-}
+import type { InputEvent, VideoChunk } from "../protocol.js";
 
 export interface EngineMetadata {
   codec: "h264";
@@ -23,3 +16,5 @@ export interface Engine {
   captureFrame?(): Promise<{ data: Uint8Array; mime: string }>;
   readonly metadata: EngineMetadata | null;
 }
+
+export type { VideoChunk };

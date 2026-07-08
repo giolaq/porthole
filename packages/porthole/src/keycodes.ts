@@ -1,3 +1,5 @@
+import type { RemoteButton } from "./protocol.js";
+
 export const AndroidKeycode = {
   KEYCODE_DPAD_UP: 19,
   KEYCODE_DPAD_DOWN: 20,
@@ -15,21 +17,6 @@ export const AndroidKeycode = {
   KEYCODE_WAKEUP: 224,
 } as const;
 
-export type RemoteButton =
-  | "dpad_up"
-  | "dpad_down"
-  | "dpad_left"
-  | "dpad_right"
-  | "select"
-  | "back"
-  | "home"
-  | "menu"
-  | "play_pause"
-  | "rewind"
-  | "fast_forward"
-  | "volume_up"
-  | "volume_down";
-
 export const REMOTE_BUTTON_TO_KEYCODE: Record<RemoteButton, number> = {
   dpad_up: AndroidKeycode.KEYCODE_DPAD_UP,
   dpad_down: AndroidKeycode.KEYCODE_DPAD_DOWN,
@@ -45,3 +32,5 @@ export const REMOTE_BUTTON_TO_KEYCODE: Record<RemoteButton, number> = {
   volume_up: AndroidKeycode.KEYCODE_VOLUME_UP,
   volume_down: AndroidKeycode.KEYCODE_VOLUME_DOWN,
 };
+
+export type { RemoteButton };
