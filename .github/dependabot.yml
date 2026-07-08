@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@yume-chan/*"
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      yume-chan:
+        patterns:
+          - "@yume-chan/*"

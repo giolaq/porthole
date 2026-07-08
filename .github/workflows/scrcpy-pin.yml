@@ -1,0 +1,32 @@
+name: scrcpy pin freshness
+
+on:
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: pin
+        run: node .github/scripts/check-scrcpy-pin.mjs
+      - name: Open scrcpy pin PR
+        if: steps.pin.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/bump-scrcpy-${{ steps.pin.outputs.version }}
+          title: "chore: bump scrcpy server to ${{ steps.pin.outputs.version }}"
+          commit-message: "chore: bump scrcpy server to ${{ steps.pin.outputs.version }}"
+          body: |
+            Updates the pinned scrcpy-server download to `${{ steps.pin.outputs.version }}` and SHA-256 `${{ steps.pin.outputs.sha256 }}`.
+
+            Reminder: verify the `AdbScrcpyOptions` class still matches the scrcpy server protocol before merging.

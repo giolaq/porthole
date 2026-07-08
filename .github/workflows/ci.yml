@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test
+      - run: npm run test:coverage
       - run: npm run lint
       - run: npm run typecheck
       - name: npm pack smoke
@@ -53,4 +54,8 @@ jobs:
           api-level: 35
           target: google_apis
           arch: x86_64
-          script: PORTHOLE_EMU=1 npm run test
+          script: |
+            npm run build
+            npx porthole start --device emulator-5554 --detach -q --no-preview
+            PORTHOLE_EMU=1 npm run test
+            PORTHOLE_E2E=1 npm run test:e2e

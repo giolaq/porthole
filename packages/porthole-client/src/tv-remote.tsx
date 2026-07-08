@@ -200,6 +200,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
         </button>
         {/* Center OK */}
         <button
+          data-testid="remote-select"
           onClick={() => press("select")}
           style={{
             width: "52px",

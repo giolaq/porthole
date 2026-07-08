@@ -1,5 +1,7 @@
 node_modules/
 dist/
+coverage/
+test-results/
 *.tsbuildinfo
 packages/porthole/assets/
 packages/porthole/client-dist/

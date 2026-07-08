@@ -6,6 +6,7 @@ interface MjpegViewProps {
 export function MjpegView({ width, height }: MjpegViewProps) {
   return (
     <img
+      data-testid="mjpeg-stream"
       src="/stream.mjpeg"
       width={width}
       height={height}

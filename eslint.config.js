@@ -20,6 +20,8 @@ export default tseslint.config(
       "**/*.cjs",
       "**/*.mjs",
       "vitest.config.ts",
+      "playwright.config.ts",
+      "e2e/",
       "packages/porthole-client/vite.config.ts",
       "examples/",
     ],

@@ -194,6 +194,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
 
   return (
     <canvas
+      data-testid="video-canvas"
       ref={canvasRef}
       width={width}
       height={height}
