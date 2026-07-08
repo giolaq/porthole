@@ -29,6 +29,47 @@ const REMOTE_TO_QCODE: Record<RemoteButton, string> = {
   volume_down: "volumedown",
 };
 
+// Remote buttons → Linux KEY_ names accepted by the on-device `inputd-cli
+// button_press` (exposed by com.amazon.dev.shell.service in developer mode).
+// This drives the inputmgr-key-injection device — real remote events the
+// Vega focus engine acts on. Select is KEY_ENTER (KEY_SELECT is a no-op) and
+// home is KEY_HOMEPAGE (KEY_HOME is inert). Discovered via the Appium Vega
+// driver / software-mansion/argent's vega automation.
+const REMOTE_TO_INPUTD_KEY: Record<RemoteButton, string> = {
+  dpad_up: "KEY_UP",
+  dpad_down: "KEY_DOWN",
+  dpad_left: "KEY_LEFT",
+  dpad_right: "KEY_RIGHT",
+  select: "KEY_ENTER",
+  back: "KEY_BACK",
+  home: "KEY_HOMEPAGE",
+  menu: "KEY_MENU",
+  rewind: "KEY_REWIND",
+  play_pause: "KEY_PLAYPAUSE",
+  fast_forward: "KEY_FASTFORWARD",
+  volume_up: "KEY_VOLUMEUP",
+  volume_down: "KEY_VOLUMEDOWN",
+};
+
+const ANDROID_KEYCODE_TO_INPUTD_KEY: Record<number, string> = {
+  3: "KEY_HOMEPAGE",
+  4: "KEY_BACK",
+  19: "KEY_UP",
+  20: "KEY_DOWN",
+  21: "KEY_LEFT",
+  22: "KEY_RIGHT",
+  23: "KEY_ENTER",
+  24: "KEY_VOLUMEUP",
+  25: "KEY_VOLUMEDOWN",
+  66: "KEY_ENTER",
+  67: "KEY_BACKSPACE",
+  82: "KEY_MENU",
+  85: "KEY_PLAYPAUSE",
+  89: "KEY_REWIND",
+  90: "KEY_FASTFORWARD",
+  164: "KEY_MUTE",
+};
+
 // macOS virtual key codes for the GUI-relay input path. The VVD's own
 // -keyboard-mapping translates ESC→BACK and F1..F5→HOME/MENU/REW/PLAY/FF.
 const REMOTE_TO_MAC_KEYCODE: Record<RemoteButton, number | undefined> = {
@@ -122,6 +163,7 @@ export class VegaEngine implements Engine {
   async sendInput(event: EngineInputEvent): Promise<void> {
     if (event.kind === "remote") {
       await this.sendKey(
+        REMOTE_TO_INPUTD_KEY[event.button],
         REMOTE_TO_QCODE[event.button],
         REMOTE_TO_MAC_KEYCODE[event.button],
       );
@@ -131,35 +173,88 @@ export class VegaEngine implements Engine {
       // A full press is emitted per event; only act on the down phase so the
       // client's down/up pairs do not double-press.
       if (event.phase !== "down") return;
+      const inputdKey = ANDROID_KEYCODE_TO_INPUTD_KEY[event.keycode];
       const qcode = ANDROID_KEYCODE_TO_QCODE[event.keycode];
-      if (!qcode) {
+      if (!inputdKey && !qcode) {
         throw new Error(`No Vega key mapping for Android keycode ${event.keycode}`);
       }
-      await this.sendKey(qcode, ANDROID_KEYCODE_TO_MAC_KEYCODE[event.keycode]);
+      await this.sendKey(inputdKey, qcode, ANDROID_KEYCODE_TO_MAC_KEYCODE[event.keycode]);
       return;
     }
     if (event.kind === "text") {
+      if (this.inputMode() === "inputd") {
+        await this.inputdCli(["send_text", event.text]);
+        return;
+      }
       for (const char of event.text) {
         const qcode = textQcode(char);
-        if (qcode) await this.sendKey(qcode);
+        if (qcode) await this.sendKey(undefined, qcode);
       }
       return;
     }
     throw new Error("Touch input is not available for Vega devices.");
   }
 
-  // Vega's inputd only delivers keys that arrive through the VVD GUI's own
-  // channel (QMP/console-injected events are consumed as wake-ups). Until
-  // Amazon exposes a headless injection API, the working path on macOS is
-  // relaying a native keystroke to the focused VVD window. QMP remains as
-  // fallback for non-macOS or when PORTHOLE_VEGA_INPUT=qmp.
-  private async sendKey(qcode: string, macKeyCode?: number): Promise<void> {
-    const mode = process.env["PORTHOLE_VEGA_INPUT"] ?? "gui";
-    if (mode === "gui" && process.platform === "darwin" && macKeyCode !== undefined) {
+  private inputMode(): "inputd" | "gui" | "qmp" {
+    const mode = process.env["PORTHOLE_VEGA_INPUT"];
+    if (mode === "gui" || mode === "qmp") return mode;
+    return "inputd";
+  }
+
+  // Input delivery, in order of preference:
+  //  - inputd (default): on-device `inputd-cli button_press KEY_*` over vda —
+  //    drives the inputmgr-key-injection device headlessly. Needs developer
+  //    mode (com.amazon.dev.shell.service).
+  //  - gui: relay a native macOS keystroke to the focused VVD window.
+  //  - qmp: QEMU send-key — reaches the guest keyboard but Vega's focus
+  //    engine ignores it; kept for experimentation only.
+  private async sendKey(
+    inputdKey: string | undefined,
+    qcode: string | undefined,
+    macKeyCode?: number,
+  ): Promise<void> {
+    const mode = this.inputMode();
+    if (mode === "inputd" && inputdKey) {
+      await this.inputdCli(["button_press", inputdKey]);
+      return;
+    }
+    if (mode !== "qmp" && process.platform === "darwin" && macKeyCode !== undefined) {
       await sendMacKeystrokeToVvd(macKeyCode);
       return;
     }
+    if (!qcode) throw new Error("No key mapping for this input in the selected mode.");
     await this.qmpSendKey(qcode);
+  }
+
+  private async inputdCli(args: string[]): Promise<void> {
+    const vda = resolveVdaBin();
+    if (!vda) {
+      throw new Error(
+        "vda (Vega Device Adaptor) not found. Set PORTHOLE_VDA_BIN or install " +
+          "the Vega SDK, or set PORTHOLE_VEGA_INPUT=gui.",
+      );
+    }
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        vda,
+        ["-s", `emulator-${this.consolePort}`, "shell", "inputd-cli", ...args],
+        { timeout: 10_000 },
+      );
+      const output = `${stdout}\n${stderr}`;
+      if (output.includes("No running instances of com.amazon.dev.shell.service")) {
+        throw new Error(
+          "Vega developer mode is off — inputd-cli is unavailable. Enable it " +
+            "on the VVD (vsm developer-mode) or set PORTHOLE_VEGA_INPUT=gui.",
+        );
+      }
+      if (/error/i.test(output) && !output.includes("Injecting")) {
+        throw new Error(`inputd-cli failed: ${output.trim().slice(0, 200)}`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("inputd-cli")) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Vega input failed: ${message.slice(0, 200)}`);
+    }
   }
 
   async screenshot(): Promise<Uint8Array> {
@@ -321,6 +416,23 @@ export function isVegaConsoleUp(port = 5554): Promise<boolean> {
       resolve(isEmulatorConsole);
     });
   });
+}
+
+export function resolveVdaBin(): string | null {
+  const override = process.env["PORTHOLE_VDA_BIN"];
+  if (override && existsSync(override)) return override;
+  const sdkRoot = join(homedir(), "vega", "sdk");
+  if (!existsSync(sdkRoot)) return null;
+  for (const version of readdirSync(sdkRoot).sort().reverse()) {
+    const envDir = join(sdkRoot, version, "workspace", "env");
+    if (!existsSync(envDir)) continue;
+    for (const pkg of readdirSync(envDir)) {
+      if (!pkg.startsWith("KeplerCLIVegaDeviceAdaptor")) continue;
+      const candidate = join(envDir, pkg, "runtime", "bin", "vda");
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
 }
 
 export function resolveVegaCli(): string | null {

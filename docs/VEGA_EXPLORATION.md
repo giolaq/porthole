@@ -145,13 +145,21 @@ private channel when its window has focus.
 this VVD build outright (QEMU process dies, console and QMP sockets gone).
 Tested 2026-07-08; needs a `vega virtual-device start` to recover.
 
-**Porthole Vega status therefore: streaming/screenshots fully work; input
-does not reach apps yet.** Next avenues, in order: (1) Amazon's docs/forums
-for the `mock-app-session` input-source grammar, (2) the
-`com.amazon.dev.shell.service` component (a developer shell service that may
-expose an input API), (3) sniffing what the VVD GUI sends when its remote
-skin is clicked (lsof/strace on the qemu process), (4) asking the Vega SDK
-team directly — Porthole has a precise repro for them.
+**RESOLVED (2026-07-09): input works headlessly via `inputd-cli`.** Avenue
+(2) was the right one: `com.amazon.dev.shell.service` exposes `inputd-cli`
+on-device (developer mode required). `vda shell inputd-cli button_press
+KEY_DOWN` drives the `inputmgr-key-injection` device and the Vega focus
+engine responds — verified end-to-end from the Porthole web-UI remote
+against a real app. Key names: select=`KEY_ENTER` (`KEY_SELECT` no-op),
+home=`KEY_HOMEPAGE` (`KEY_HOME` inert), full media/volume vocabulary; text
+via `inputd-cli send_text`; probe `inputd-cli get_screen_size` as the
+developer-mode gate. Credit: discovered by reading
+software-mansion/argent's Vega automation (which follows Amazon's Appium
+Vega driver). The same source documents an on-device **automation toolkit**
+(port 8383, enabled by touching `/tmp/automation-toolkit.enable` before app
+launch, `getPageSource` JSON-RPC over `adb forward`) — the future substrate
+for `dump_ui`/`focused`/`focus-on` on Vega. VegaEngine now defaults to
+inputd; `PORTHOLE_VEGA_INPUT=gui|qmp` selects the fallbacks.
 
 ## Risks & open items
 
