@@ -8,3 +8,4 @@ packages/porthole/client-dist/
 packages/porthole/skills/
 packages/porthole/README.md
 packages/porthole/LICENSE
+build/

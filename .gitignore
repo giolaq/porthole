@@ -12,3 +12,5 @@ assets/*
 packages/porthole/README.md
 packages/porthole/LICENSE
 packages/porthole/skills/
+build/
+buildinfo.json
