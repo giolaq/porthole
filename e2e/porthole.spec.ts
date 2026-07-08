@@ -53,12 +53,17 @@ test("MJPEG mode renders an image", async ({ page }) => {
   await page.goto("/?video=mjpeg");
   const image = page.getByTestId("mjpeg-stream");
   await expect(image).toBeVisible();
+  // The first MJPEG frame needs a screencap plus a pure-JS PNG→JPEG
+  // re-encode on a software-rendered CI emulator — well beyond the default
+  // 5s poll (renders in ~6s locally, slower on CI).
   await expect
-    .poll(() =>
-      image.evaluate((node) => {
-        const img = node as HTMLImageElement;
-        return img.naturalWidth * img.naturalHeight;
-      }),
+    .poll(
+      () =>
+        image.evaluate((node) => {
+          const img = node as HTMLImageElement;
+          return img.naturalWidth * img.naturalHeight;
+        }),
+      { timeout: 30_000 },
     )
     .toBeGreaterThan(0);
 });
