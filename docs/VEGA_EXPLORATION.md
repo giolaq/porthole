@@ -135,9 +135,15 @@ Diagnosis: Vega routes app input through an **input session** (`vlcm
 dump-state` shows every "App Session"/"User Engaged Session" empty; `vlcm
 mock-app-session --pid <pid> --input-source <?>` exists but its source
 grammar is undocumented and all guessed values were rejected). Key events
-from the emulated keyboard reach the guest but `inputd` does not deliver
-them to apps without such a session. The VVD GUI presumably establishes one
-through a private channel when its window has focus.
+from the emulated keyboard DO reach the guest — `inputd` logs an
+Input_Processing task and a DISPLAY power-state change per press (the event
+is consumed as user-activity/wake) — but they are never delivered to apps
+without such a session. The VVD GUI presumably establishes one through a
+private channel when its window has focus.
+
+⚠️ **Do NOT try QMP `input-send-event` with abs/touch events**: it crashes
+this VVD build outright (QEMU process dies, console and QMP sockets gone).
+Tested 2026-07-08; needs a `vega virtual-device start` to recover.
 
 **Porthole Vega status therefore: streaming/screenshots fully work; input
 does not reach apps yet.** Next avenues, in order: (1) Amazon's docs/forums
