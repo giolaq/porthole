@@ -1,6 +1,6 @@
 {
   "name": "portholejs",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A window into your Android emulator — stream and control AVDs from the browser",
   "type": "module",
   "main": "./dist/index.js",
