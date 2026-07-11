@@ -9,21 +9,25 @@ test("canvas paints non-black pixels", async ({ page }) => {
   await page.goto("/");
   const canvas = page.getByTestId("video-canvas");
   await expect(canvas).toBeVisible();
+  // The first H.264 frame can take well beyond the default 5s poll on a
+  // software-rendered CI emulator (same margin as the MJPEG test below).
   await expect
-    .poll(async () =>
-      canvas.evaluate((node) => {
-        const canvasNode = node as HTMLCanvasElement;
-        const ctx = canvasNode.getContext("2d");
-        if (!ctx) return 0;
-        const data = ctx.getImageData(0, 0, canvasNode.width, canvasNode.height).data;
-        let nonBlack = 0;
-        for (let i = 0; i < data.length; i += 4 * 997) {
-          if ((data[i] ?? 0) + (data[i + 1] ?? 0) + (data[i + 2] ?? 0) > 15) {
-            nonBlack++;
+    .poll(
+      async () =>
+        canvas.evaluate((node) => {
+          const canvasNode = node as HTMLCanvasElement;
+          const ctx = canvasNode.getContext("2d");
+          if (!ctx) return 0;
+          const data = ctx.getImageData(0, 0, canvasNode.width, canvasNode.height).data;
+          let nonBlack = 0;
+          for (let i = 0; i < data.length; i += 4 * 997) {
+            if ((data[i] ?? 0) + (data[i + 1] ?? 0) + (data[i + 2] ?? 0) > 15) {
+              nonBlack++;
+            }
           }
-        }
-        return nonBlack;
-      }),
+          return nonBlack;
+        }),
+      { timeout: 30_000 },
     )
     .toBeGreaterThan(0);
 });
