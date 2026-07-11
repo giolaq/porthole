@@ -240,9 +240,25 @@ async function waitForBoot(
   throw new Error(`Timed out waiting for ${avdName} to boot`);
 }
 
-export async function shutdownDevice(sdk: string, serial: string): Promise<void> {
+export async function shutdownDevice(
+  sdk: string,
+  serial: string,
+  timeoutMs = 15_000,
+): Promise<void> {
   const adb = adbBin(sdk);
-  await execFileAsync(adb, ["-s", serial, "emu", "kill"]);
+  try {
+    await execFileAsync(adb, ["-s", serial, "emu", "kill"]);
+  } catch {
+    // already gone or adb can't reach it — nothing left to kill
+  }
+  // emu kill only requests shutdown; wait for the emulator process to
+  // actually release the AVD so an immediate re-boot doesn't hit a lock.
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const devices = await listRunningDevices(sdk);
+    if (!devices.some((device) => device.serial === serial)) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
   bootedByUs.delete(serial);
   await removeSession({ serial });
 }

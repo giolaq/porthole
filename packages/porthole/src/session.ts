@@ -48,6 +48,7 @@ interface DeviceRuntime {
 
 export class Session {
   private server: Server | null = null;
+  private stopPromise: Promise<void> | null = null;
   private attachEngine: ((deviceId: string, engine: Engine) => void) | null = null;
   private readonly runtimes = new Map<string, DeviceRuntime>();
   private readonly defaultSerial: string;
@@ -231,6 +232,13 @@ export class Session {
   }
 
   async stop(): Promise<void> {
+    // Latch so repeated signals share one shutdown instead of stacking
+    // concurrent server.close() listeners.
+    this.stopPromise ??= this.doStop();
+    return this.stopPromise;
+  }
+
+  private async doStop(): Promise<void> {
     for (const runtime of this.runtimes.values()) {
       runtime.stopping = true;
       if (runtime.engine) {
@@ -240,7 +248,11 @@ export class Session {
     }
     if (this.server) {
       const server = this.server;
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+      // close() only stops new connections; the preview's open WebSocket and
+      // keep-alive sockets would otherwise hold the server open indefinitely.
+      server.closeAllConnections();
+      await closed;
       this.server = null;
     }
     await removeSession({ port: this.port, pid: process.pid });
