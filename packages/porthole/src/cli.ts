@@ -34,6 +34,7 @@ import { runCliAction } from "./cli-errors.js";
 import { runDoctor } from "./doctor.js";
 import { ensurePortFree } from "./port-check.js";
 import { ensureVegaVirtualDevice } from "./engine/vega-engine.js";
+import { isFirstRun, markWelcomeShown, welcomeText } from "./first-run.js";
 import { scrollGesture, type ScrollDirection } from "./gesture.js";
 import { comparePngScreens, parseDiffRegion } from "./screen-diff.js";
 import { recordSession } from "./recording.js";
@@ -111,7 +112,7 @@ program
   .option("--mjpeg", "MJPEG mode")
   .option("--vega", "Attach to the Amazon Vega (Fire TV) virtual device")
   .option("--detach", "Run the preview server in the background")
-  .option("--keep-alive", "Leave a Porthole-booted emulator running on exit")
+  .option("--keep-alive", "Leave the emulator running on exit")
   .option("--wipe-data", "Wipe emulator data before boot")
   .option("--no-snapshot", "Disable loading/saving emulator snapshots")
   .option("--cold-boot", "Alias for --no-snapshot")
@@ -142,6 +143,15 @@ program
         quiet?: boolean;
       },
     ) => {
+      if (
+        !opts.quiet &&
+        process.env["PORTHOLE_DETACHED_CHILD"] !== "1" &&
+        (await isFirstRun())
+      ) {
+        console.log(welcomeText(VERSION));
+        await markWelcomeShown();
+      }
+
       // Check the port before prompting, booting, or detaching — a busy port
       // otherwise surfaces as a boot wasted on a doomed session or as an
       // opaque detach timeout.
@@ -224,13 +234,21 @@ program
         process.exit(1);
       }
 
+      let stopping = false;
       const stopForSignal = async () => {
+        if (stopping) process.exit(130);
+        stopping = true;
+        if (!opts.quiet) {
+          console.log("\nShutting down (press Ctrl+C again to force quit)...");
+        }
         await session.stop();
         for (const target of targets) {
-          if (target.bootedByUs && !opts.keepAlive && target.device.serial) {
+          if (!opts.keepAlive && target.device.serial) {
+            if (!opts.quiet) console.log(`Stopping ${target.device.name}...`);
             await shutdownDevice(sdk, target.device.serial);
           }
         }
+        if (!opts.quiet) console.log("Porthole closed. See you next time! 👋");
         process.exit(0);
       };
       process.on("SIGINT", () => void stopForSignal());
@@ -933,8 +951,15 @@ async function startVegaSession(opts: StartOptions): Promise<void> {
     process.exit(1);
   }
 
+  let stopping = false;
   const stopForSignal = async () => {
+    if (stopping) process.exit(130);
+    stopping = true;
+    if (!opts.quiet) {
+      console.log("\nShutting down (press Ctrl+C again to force quit)...");
+    }
     await session.stop();
+    if (!opts.quiet) console.log("Porthole closed. See you next time! 👋");
     process.exit(0);
   };
   process.on("SIGINT", () => void stopForSignal());
