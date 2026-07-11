@@ -1,3 +1,4 @@
+
 # Porthole
 
 <p align="center">
@@ -18,6 +19,8 @@ and forwards touch, keyboard, D-pad remote, screenshots, logcat, and file drops
 through one local tool. It also has experimental support for the
 **Amazon Fire TV Vega simulator**. It is the Android sibling of
 [serve-sim](https://github.com/EvanBacon/serve-sim).
+
+https://github.com/user-attachments/assets/c4866f6e-1934-487a-bdce-84cd198d826a
 
 ## Quick Start
 
