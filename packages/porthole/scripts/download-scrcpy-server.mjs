@@ -12,9 +12,9 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const SCRCPY_VERSION = "3.1";
+export const SCRCPY_VERSION = "4.1";
 export const SCRCPY_SHA256 =
-  "958f0944a62f23b1f33a16e9eb14844c1a04b882ca175a738c16d23cb22b86c0";
+  "deacb991ed2509715160ffdc7907e47b4160eb30d1566217e9047fd5b8850cae";
 export const SCRCPY_URL = `https://github.com/Genymobile/scrcpy/releases/download/v${SCRCPY_VERSION}/scrcpy-server-v${SCRCPY_VERSION}`;
 
 const here = dirname(fileURLToPath(import.meta.url));
