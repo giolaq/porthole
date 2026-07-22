@@ -64,14 +64,14 @@
     "@yume-chan/adb-server-node-tcp": "^2.5.2",
     "@yume-chan/scrcpy": "^2.3.0",
     "@yume-chan/stream-extra": "^2.5.3",
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "jpeg-js": "^0.4.4",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.1"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.1.1",
     "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1"
   }
