@@ -253,6 +253,8 @@ profile, state }`.
 - **FR-5.4** **Physical keyboard mapping** for the TV profile: arrow keys →
   `dpad_*`, Enter → `select`, Esc/Backspace → `back`.
 - **FR-5.5** Device picker, connection status, and a screenshot button.
+- **FR-5.6** Show a shared activity feed, visible agent input, a human control
+  toggle, a question banner, and screen annotations. Added in plan 4.
 
 ### FR-6 — CLI
 
@@ -272,6 +274,8 @@ porthole mcp               Run the MCP server on stdio
 - **FR-6.2** Input subcommands target a running session; clear error if none.
 - **FR-6.3** `--host 0.0.0.0` exposes the preview on the LAN (see FR-8 / §8.7).
 - **FR-6.4** `-q/--quiet` emits JSON only, for scripting.
+- **FR-6.5** Expose shared activity, control hand-off, questions, and intent
+  notes through CLI commands. Added in plan 4.
 
 ### FR-7 — MCP server (Claude Code integration)
 
@@ -285,6 +289,21 @@ porthole mcp               Run the MCP server on stdio
   - `read_logcat` — returns recent logcat output (optionally filtered).
 - **FR-7.3** Tool results must be structured and concise so an agent can chain
   them (e.g. `remote` then `screenshot` to verify D-pad focus moved).
+- **FR-7.4** MCP tools use the same session and actions as browser and CLI
+  operators, with actor identity on every request. Added in plan 4.
+- **FR-7.5** Expose recent activity, control state, human questions, screen
+  annotations, and narration as MCP tools. Added in plan 4.
+
+### FR-7A — Collaboration (Added in plan 4)
+
+- **FR-7A.1** Attribute input and API actions to a human, agent, CLI, or CI
+  actor and publish outcomes to a bounded activity feed.
+- **FR-7A.2** Let the human take and release control. Reject agent input while
+  the human holds control with a retryable `PAUSED_BY_HUMAN` error.
+- **FR-7A.3** Let an agent ask a question, show it in the browser, and return
+  the human's answer or timeout to the agent.
+- **FR-7A.4** Let the human mark a normalized screen region with a note and
+  provide the annotation and captured image to the agent.
 
 ### FR-8 — Docs & skill
 

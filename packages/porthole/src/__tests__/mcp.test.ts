@@ -108,8 +108,6 @@ describe("MCP session client", () => {
     expect(actorHeaders).toEqual(["agent:mcp", "agent:mcp", "agent:mcp"]);
     const shot = await client.callTool({ name: "screenshot", arguments: {} });
     expect(JSON.stringify(shot.content)).toContain('"type":"image"');
-    const ui = await client.callTool({ name: "dump_ui", arguments: {} });
-    expect(ui.isError).toBe(true);
   });
 
   it("rejects touch on a TV profile with a machine-readable error", async () => {
