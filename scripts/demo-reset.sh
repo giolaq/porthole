@@ -8,6 +8,7 @@ if [[ -n ${PORTHOLE_BIN:-} ]]; then
   porthole_cmd=("$PORTHOLE_BIN")
 fi
 
+"${porthole_cmd[@]}" control shared "$@"
 "${porthole_cmd[@]}" stop-app "$package_name" "$@"
 "${porthole_cmd[@]}" clear-app "$package_name" "$@"
 "${porthole_cmd[@]}" launch "$package_name" "$@"

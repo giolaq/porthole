@@ -31,7 +31,7 @@ session. Reset and launch the movie shelf before each take:
 scripts/demo-reset.sh
 ```
 
-The reset adds three CLI actions to the feed. Start the video
+The reset hands control back and adds app actions to the feed. Start the video
 capture in another terminal and leave it running during the walkthrough:
 
 ```sh
