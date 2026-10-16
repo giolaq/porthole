@@ -3,7 +3,8 @@
 ## Prepare once
 
 Use a booted Android TV AVD with the [movie shelf app](../../examples/rn-tvos-app/README.md)
-installed and Metro running. Build Porthole with `npm run build`, then use the
+installed as a release APK (`npx expo run:android --variant release --device`
+from the app directory). Build Porthole with `npm run build`, then use the
 local CLI and register that build with Claude Code from the repository root:
 
 ```sh

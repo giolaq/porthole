@@ -260,7 +260,7 @@ question that appears in the browser. The human can answer there and draw a
 screen annotation with a note; the agent can retrieve the annotation and its
 captured image through `get_annotations`.
 
-<!-- TODO: Capture the human-agent walkthrough and add assets/collab-demo.gif here. -->
+![Human control, agent question, annotation, and shared activity on a TV session](assets/collab-demo.png)
 
 See [the shared control plane ADR](docs/ADR-shared-control-plane.md) for the
 architecture and [the demo walkthrough](docs/demo/human-agent-demo.md) for a

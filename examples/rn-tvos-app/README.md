@@ -21,6 +21,15 @@ the app and starts Metro; leave Metro running for this debug build. Expo's
 documents `run:android` and the `--device` selector. The app uses the
 [Expo 56 SDK](https://docs.expo.dev/versions/v56.0.0/).
 
+For the repeatable collaboration demo, install a release build instead:
+
+```sh
+npx expo run:android --variant release --device
+```
+
+The release APK bundles its JavaScript, so `demo-reset.sh` can clear app data
+and relaunch without a Metro connection.
+
 ## Open it through Porthole
 
 From the repository root, after building Porthole, start its server against
