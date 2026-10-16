@@ -15,9 +15,10 @@ export interface RouteContext {
   deviceId?: string;
   opts: HttpServerOptions;
   mjpegPollers: Map<string, MjpegPoller>;
+  params?: Record<string, string>;
 }
 export interface Route {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   path: string;
   handler(ctx: RouteContext): Promise<void>;
 }
@@ -33,6 +34,8 @@ export function actionContext(ctx: RouteContext): ActionContext {
       getDevice: (id) => opts.getDevice?.(id),
       serial: (id) => opts.getDevice?.(id)?.serial ?? "",
       defaultDeviceId: () => opts.getDevice?.()?.serial ?? "",
+      activityBus: opts.activityBus,
+      getControlState: opts.getControlState,
       sendInput: async (event, id) => {
         if (opts.handleInput) return opts.handleInput(event, id);
         const engine = opts.getEngine(id);
@@ -74,7 +77,8 @@ export async function routeRequest(ctx: RouteContext, routes: Route[]): Promise<
     res.setHeader("Set-Cookie", `porthole_token=${opts.token}; Path=/; SameSite=Lax`);
   }
   const route = routes.find((item) => {
-    if (item.path !== url.pathname) return false;
+    const params = matchPath(item.path, url.pathname);
+    if (!params) return false;
     if (item.method === req.method) return true;
     // These two endpoints historically ignored the request method.
     return (
@@ -83,6 +87,7 @@ export async function routeRequest(ctx: RouteContext, routes: Route[]): Promise<
     );
   });
   if (!route) return false;
+  ctx.params = matchPath(route.path, url.pathname) ?? undefined;
   try {
     if (
       url.pathname.startsWith("/api/") &&
@@ -97,6 +102,21 @@ export async function routeRequest(ctx: RouteContext, routes: Route[]): Promise<
     await sendActionError(res, error);
   }
   return true;
+}
+
+function matchPath(pattern: string, path: string): Record<string, string> | null {
+  const expected = pattern.split("/");
+  const actual = path.split("/");
+  if (expected.length !== actual.length) return null;
+  const params: Record<string, string> = {};
+  for (let i = 0; i < expected.length; i++) {
+    const part = expected[i];
+    const value = actual[i];
+    if (!part || value === undefined) continue;
+    if (part.startsWith(":")) params[part.slice(1)] = decodeURIComponent(value);
+    else if (part !== value) return null;
+  }
+  return params;
 }
 
 export async function readJson(req: IncomingMessage): Promise<unknown> {

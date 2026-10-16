@@ -7,6 +7,10 @@ import { encodeVideoPacket } from "../protocol.js";
 import { debugLog } from "../log.js";
 import type { SessionHandle } from "../actions/context.js";
 import { sendInput } from "../actions/input.js";
+import type { ActivityBus } from "../activity.js";
+import type { ServerEvent } from "../protocol.js";
+import type { QuestionStore } from "../questions.js";
+import type { AnnotationStore } from "../annotations.js";
 
 export interface WsServerOptions {
   httpServer: Server;
@@ -15,6 +19,9 @@ export interface WsServerOptions {
   getDefaultDeviceId?: () => string | undefined;
   token?: string;
   sessionHandle?: SessionHandle;
+  activityBus?: ActivityBus;
+  questionStore?: QuestionStore;
+  annotationStore?: AnnotationStore;
 }
 
 export function createWsServer(opts: WsServerOptions) {
@@ -25,6 +32,28 @@ export function createWsServer(opts: WsServerOptions) {
   const clientDevices = new WeakMap<WebSocket, string>();
   const lastConfig = new Map<string, Buffer>();
   const lastKeyframe = new Map<string, Buffer>();
+
+  function broadcast(event: ServerEvent, deviceId: string): void {
+    const message = JSON.stringify(event);
+    for (const client of wss.clients) {
+      if (
+        client.readyState === WebSocket.OPEN &&
+        clientDevices.get(client) === deviceId
+      ) {
+        client.send(message);
+      }
+    }
+  }
+
+  opts.activityBus?.subscribe((event) =>
+    broadcast({ type: "activity", event }, event.deviceId),
+  );
+  opts.questionStore?.subscribe((question) =>
+    broadcast({ type: "question", question }, question.deviceId),
+  );
+  opts.annotationStore?.subscribe((annotation) =>
+    broadcast({ type: "annotation", annotation }, annotation.deviceId),
+  );
 
   function attachEngine(deviceId: string, engine: Engine): void {
     engine.onVideoChunk((chunk: VideoChunk) => {
@@ -99,7 +128,7 @@ export function createWsServer(opts: WsServerOptions) {
     });
   });
 
-  return { wss, attachEngine };
+  return { wss, attachEngine, broadcast };
 }
 
 function isAuthorized(req: IncomingMessage, token: string | undefined): boolean {

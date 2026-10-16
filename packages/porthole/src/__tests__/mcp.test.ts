@@ -9,6 +9,9 @@ import { createMcpServer } from "../mcp/server.js";
 import { createHttpServer } from "../server/http.js";
 import { writeState } from "../state.js";
 import { FakeEngine } from "./helpers/fake-engine.js";
+import { ActivityBus } from "../activity.js";
+import { QuestionStore } from "../questions.js";
+import { AnnotationStore } from "../annotations.js";
 import type { DeviceInfo } from "../device-manager.js";
 
 const oldStateFile = process.env["PORTHOLE_STATE_FILE"];
@@ -23,6 +26,9 @@ async function setup(profile: "phone" | "tv") {
   const dir = await mkdtemp(join(tmpdir(), "porthole-mcp-test-"));
   process.env["PORTHOLE_STATE_FILE"] = join(dir, "state.json");
   const engine = new FakeEngine();
+  const activityBus = new ActivityBus();
+  const questionStore = new QuestionStore(activityBus);
+  const annotationStore = new AnnotationStore(activityBus);
   const device: DeviceInfo = {
     name: "Test_AVD",
     serial: "emulator-5554",
@@ -36,6 +42,9 @@ async function setup(profile: "phone" | "tv") {
     getEngine: () => engine,
     getDevice: () => device,
     getDevices: () => [device],
+    activityBus,
+    questionStore,
+    annotationStore,
   });
   const actorHeaders: string[] = [];
   http.on("request", (req) => {
@@ -78,7 +87,7 @@ async function setup(profile: "phone" | "tv") {
     arguments: { serial: device.serial },
   });
   expect(attached.isError).not.toBe(true);
-  return { client, engine, actorHeaders };
+  return { client, engine, actorHeaders, activityBus, questionStore, annotationStore };
 }
 
 describe("MCP session client", () => {
@@ -109,5 +118,43 @@ describe("MCP session client", () => {
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain("TOUCH_NOT_SUPPORTED");
     expect(engine.inputs).toEqual([]);
+  });
+
+  it("exposes activity, questions, and annotation crops", async () => {
+    const { client, engine, activityBus, questionStore, annotationStore } =
+      await setup("phone");
+    await client.callTool({ name: "say", arguments: { message: "Checking a card" } });
+    expect(activityBus.since(0, 10).some((event) => event.action === "note")).toBe(true);
+    const activity = await client.callTool({
+      name: "get_recent_activity",
+      arguments: {},
+    });
+    expect(JSON.stringify(activity.content)).toContain("Checking a card");
+    const control = await client.callTool({ name: "get_control_state", arguments: {} });
+    expect(JSON.stringify(control.content)).toContain("shared");
+    annotationStore.add(
+      "emulator-5554",
+      { kind: "human" },
+      { x: 0, y: 0, w: 1, h: 1 },
+      "border clipped",
+      await engine.screenshot(),
+    );
+    const hinted = await client.callTool({ name: "get_control_state", arguments: {} });
+    expect(JSON.stringify(hinted.content)).toContain("unread human notes");
+    const notes = await client.callTool({
+      name: "get_annotations",
+      arguments: { includeImages: true },
+    });
+    expect(JSON.stringify(notes.content)).toContain('"type":"image"');
+    const asking = client.callTool({
+      name: "ask_human",
+      arguments: { question: "Continue?", timeoutSeconds: 2 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const open = questionStore.list("emulator-5554", "open")[0];
+    if (!open) throw new Error("Question was not created");
+    questionStore.answer(open.id, "Yes", { kind: "human" });
+    const answered = await asking;
+    expect(answered.structuredContent).toMatchObject({ answered: true, answer: "Yes" });
   });
 });

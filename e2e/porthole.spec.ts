@@ -71,3 +71,48 @@ test("MJPEG mode renders an image", async ({ page }) => {
     )
     .toBeGreaterThan(0);
 });
+
+test("human and agent share activity, hand-off, and a question", async ({ page }) => {
+  await page.goto("/");
+  const health = (await (await page.request.get("/health")).json()) as {
+    device?: { profile?: string };
+  };
+  test.skip(
+    health.device?.profile !== "phone",
+    "Touch ghost scenario requires a phone AVD.",
+  );
+  const agentHeaders = { "x-porthole-actor": "agent:test" };
+  await page.request.post("/api/input", {
+    headers: agentHeaders,
+    data: { kind: "touch", phase: "down", x: 0.5, y: 0.5 },
+  });
+  await page.request.post("/api/input", {
+    headers: agentHeaders,
+    data: { kind: "touch", phase: "up", x: 0.5, y: 0.5 },
+  });
+  await expect(page.getByTestId("activity-feed").getByText("tap").first()).toBeVisible();
+  await expect(page.getByTestId("input-ghost")).toBeVisible();
+  await page.getByTestId("control-toggle").click();
+  await expect(page.getByTestId("control-banner")).toBeVisible();
+  const rejected = await page.request.post("/api/input", {
+    headers: agentHeaders,
+    data: { kind: "touch", phase: "down", x: 0.4, y: 0.4 },
+  });
+  expect(rejected.status()).toBe(423);
+  await expect(page.getByText("Agent input paused while you have control")).toBeVisible();
+  const question = (await (
+    await page.request.post("/api/questions", {
+      headers: agentHeaders,
+      data: { text: "Continue from here?", options: ["Yes", "No"] },
+    })
+  ).json()) as { id: string };
+  const waiting = page.request.get(`/api/questions/${question.id}?wait=30000`);
+  await expect(page.getByTestId("question-banner")).toContainText("Continue from here?");
+  await page.getByTestId("question-banner").getByText("Yes").click();
+  const answer = (await (await waiting).json()) as {
+    status: string;
+    answer?: { text: string };
+  };
+  expect(answer.status).toBe("answered");
+  expect(answer.answer?.text).toBe("Yes");
+});

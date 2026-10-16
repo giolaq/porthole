@@ -3,6 +3,7 @@ import { encodeInputEvent, type RemoteButton } from "portholejs/protocol";
 
 interface TvRemoteProps {
   ws: WebSocket | null;
+  highlightButton?: RemoteButton | null;
 }
 
 const KEYBOARD_MAP: Record<string, RemoteButton> = {
@@ -15,7 +16,7 @@ const KEYBOARD_MAP: Record<string, RemoteButton> = {
   Backspace: "back",
 };
 
-export function TvRemote({ ws }: TvRemoteProps) {
+export function TvRemote({ ws, highlightButton }: TvRemoteProps) {
   const press = useCallback(
     (button: RemoteButton) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -48,6 +49,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
     small?: boolean;
   }) => (
     <button
+      data-button={button}
       onClick={() => press(button)}
       style={{
         width: round ? "56px" : small ? "52px" : "44px",
@@ -79,6 +81,8 @@ export function TvRemote({ ws }: TvRemoteProps) {
 
   return (
     <div
+      className="tv-remote"
+      data-ghost-button={highlightButton ?? ""}
       style={{
         width: "200px",
         background: "linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%)",
@@ -92,6 +96,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
         border: "1px solid #2a2a2a",
       }}
     >
+      <style>{`.tv-remote[data-ghost-button] button[data-button]:is([data-button="${highlightButton ?? "__none__"}"]) { outline: 3px solid #68d5ff !important; box-shadow: 0 0 14px #68d5ff !important; }`}</style>
       {/* Power / brand area */}
       <div
         style={{
@@ -120,6 +125,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
       >
         {/* Up */}
         <button
+          data-button="dpad_up"
           onClick={() => press("dpad_up")}
           style={{
             position: "absolute",
@@ -140,6 +146,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
         </button>
         {/* Down */}
         <button
+          data-button="dpad_down"
           onClick={() => press("dpad_down")}
           style={{
             position: "absolute",
@@ -160,6 +167,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
         </button>
         {/* Left */}
         <button
+          data-button="dpad_left"
           onClick={() => press("dpad_left")}
           style={{
             position: "absolute",
@@ -180,6 +188,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
         </button>
         {/* Right */}
         <button
+          data-button="dpad_right"
           onClick={() => press("dpad_right")}
           style={{
             position: "absolute",
@@ -200,6 +209,7 @@ export function TvRemote({ ws }: TvRemoteProps) {
         </button>
         {/* Center OK */}
         <button
+          data-button="select"
           data-testid="remote-select"
           onClick={() => press("select")}
           style={{

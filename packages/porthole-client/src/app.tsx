@@ -4,10 +4,16 @@ import { TouchOverlay } from "./touch-overlay.js";
 import { TvRemote } from "./tv-remote.js";
 import { DevicePicker } from "./device-picker.js";
 import { MjpegView } from "./mjpeg-view.js";
+import { useServerEvents } from "./use-server-events.js";
+import { ActivityFeed } from "./activity-feed.js";
+import { InputGhost } from "./input-ghost.js";
+import { QuestionBanner } from "./question-banner.js";
+import { AnnotationOverlay } from "./annotation-overlay.js";
 import {
   encodeInputEvent,
   type HealthResponse,
   type InputEvent,
+  type RemoteButton,
 } from "portholejs/protocol";
 
 type Device = NonNullable<HealthResponse["device"]>;
@@ -27,7 +33,69 @@ export function App() {
   const [keyboardCaptured, setKeyboardCaptured] = useState(false);
   const [toast, setToast] = useState("");
   const [videoMode, setVideoMode] = useState<"webcodecs" | "mjpeg">("webcodecs");
+  const [showActivity, setShowActivity] = useState(true);
+  const [annotationMode, setAnnotationMode] = useState(false);
+  const [ghostButton, setGhostButton] = useState<RemoteButton | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverEvents = useServerEvents(ws, selectedDeviceId);
+
+  const postHuman = async (path: string, body: object, method = "POST") => {
+    const res = await fetch(`${path}${deviceQuery(selectedDeviceId)}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "x-porthole-actor": "human:browser",
+      },
+      body: method === "DELETE" ? undefined : JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res;
+  };
+
+  const toggleControl = async () => {
+    try {
+      await postHuman("/api/control", {
+        holder: serverEvents.control.holder === "human" ? "shared" : "human",
+      });
+    } catch {
+      setToast("Could not change control");
+    }
+  };
+
+  useEffect(() => {
+    const event = serverEvents.lastActivity;
+    if (!event) return;
+    if (event.outcome === "rejected" && event.error?.code === "PAUSED_BY_HUMAN")
+      setToast("Agent input paused while you have control");
+    if (
+      event.actor.kind !== "human" &&
+      event.action === "remote" &&
+      typeof event.params?.button === "string"
+    ) {
+      setGhostButton(event.params.button as RemoteButton);
+      const timer = setTimeout(() => setGhostButton(null), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [serverEvents.lastActivity]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.code === "Space") {
+        event.preventDefault();
+        void toggleControl();
+      } else if (
+        !keyboardCaptured &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        event.key.toLowerCase() === "a" &&
+        !(event.target instanceof HTMLInputElement) &&
+        !(event.target instanceof HTMLTextAreaElement)
+      )
+        setAnnotationMode((value) => !value);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
 
   useEffect(() => {
     // Aborted on device switch so a slow response for the previous device
@@ -105,13 +173,20 @@ export function App() {
 
       // Buffer messages until VideoCanvas takes over
       const earlyMessages: ArrayBuffer[] = [];
+      const earlyServerEvents: string[] = [];
       let drained = false;
+      let eventsDrained = false;
       nextSocket.addEventListener("message", (e: MessageEvent) => {
-        if (!drained) {
-          earlyMessages.push(e.data as ArrayBuffer);
-        }
+        if (e.data instanceof ArrayBuffer && !drained) earlyMessages.push(e.data);
+        if (typeof e.data === "string" && !eventsDrained) earlyServerEvents.push(e.data);
       });
       (nextSocket as unknown as Record<string, unknown>)._earlyMessages = earlyMessages;
+      (nextSocket as unknown as Record<string, unknown>)._earlyServerEvents =
+        earlyServerEvents;
+      (nextSocket as unknown as Record<string, unknown>)._markServerEventsDrained =
+        () => {
+          eventsDrained = true;
+        };
       (nextSocket as unknown as Record<string, unknown>)._markDrained = () => {
         drained = true;
       };
@@ -166,7 +241,9 @@ export function App() {
 
   const takeScreenshot = async (copy: boolean) => {
     try {
-      const res = await fetch(`/screenshot${deviceQuery(selectedDeviceId)}`);
+      const res = await fetch(`/screenshot${deviceQuery(selectedDeviceId)}`, {
+        headers: { "x-porthole-actor": "human:browser" },
+      });
       const blob = await res.blob();
       if (copy && navigator.clipboard && "ClipboardItem" in window) {
         await navigator.clipboard.write([
@@ -192,7 +269,9 @@ export function App() {
       const query = new URLSearchParams({ lines: "300" });
       if (selectedDeviceId) query.set("device", selectedDeviceId);
       if (logFilter) query.set("filter", logFilter);
-      const res = await fetch(`/api/logcat?${query}`);
+      const res = await fetch(`/api/logcat?${query}`, {
+        headers: { "x-porthole-actor": "human:browser" },
+      });
       const data = (await res.json()) as { logcat?: string };
       setLogs(data.logcat ?? "");
     } catch {
@@ -215,7 +294,10 @@ export function App() {
     try {
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "x-porthole-filename": file.name },
+        headers: {
+          "x-porthole-filename": file.name,
+          "x-porthole-actor": "human:browser",
+        },
         body: file,
       });
       if (!res.ok) throw new Error(await res.text());
@@ -296,7 +378,58 @@ export function App() {
         >
           Logs
         </button>
+        <button
+          data-testid="control-toggle"
+          onClick={() => void toggleControl()}
+          style={{
+            ...headerButtonStyle,
+            background: serverEvents.control.holder === "human" ? "#6b4522" : "#254b35",
+          }}
+        >
+          {serverEvents.control.holder === "human"
+            ? "✋ You have control"
+            : "🤖 Agent can act"}
+        </button>
+        <button
+          onClick={() => setAnnotationMode((value) => !value)}
+          style={{
+            ...headerButtonStyle,
+            background: annotationMode ? "#6b5422" : "#333",
+          }}
+        >
+          Annotate
+        </button>
+        <button
+          onClick={() => setShowActivity((value) => !value)}
+          style={headerButtonStyle}
+        >
+          Activity
+        </button>
       </header>
+
+      {serverEvents.control.holder === "human" && (
+        <div
+          data-testid="control-banner"
+          style={{ textAlign: "center", padding: 8, background: "#52371f" }}
+        >
+          Agent input is paused. You have control.
+        </div>
+      )}
+      {serverEvents.questions[0] && (
+        <QuestionBanner
+          question={serverEvents.questions[0]}
+          onAnswer={async (text) => {
+            try {
+              await postHuman(
+                `/api/questions/${encodeURIComponent(serverEvents.questions[0]?.id ?? "")}/answer`,
+                { text },
+              );
+            } catch {
+              setToast("Could not send answer");
+            }
+          }}
+        />
+      )}
 
       <main
         style={{
@@ -332,7 +465,28 @@ export function App() {
           ) : (
             <VideoCanvas ws={ws} width={width} height={height} onStats={setStats} />
           )}
-          {profile === "phone" && <TouchOverlay ws={ws} />}
+          {profile === "phone" && !annotationMode && <TouchOverlay ws={ws} />}
+          <InputGhost event={serverEvents.lastActivity} />
+          <AnnotationOverlay
+            active={annotationMode}
+            annotations={serverEvents.annotations}
+            onCreate={async (rect, note) => {
+              try {
+                await postHuman("/api/annotations", { rect, note });
+                setAnnotationMode(false);
+                setToast("Annotation saved");
+              } catch {
+                setToast("Could not save annotation");
+              }
+            }}
+            onDismiss={async (id) => {
+              try {
+                await postHuman(`/api/annotations/${id}`, {}, "DELETE");
+              } catch {
+                setToast("Could not dismiss annotation");
+              }
+            }}
+          />
           {keyboardCaptured && (
             <div
               style={{
@@ -368,7 +522,7 @@ export function App() {
         </div>
 
         {profile === "tv" ? (
-          <TvRemote ws={ws} />
+          <TvRemote ws={ws} highlightButton={ghostButton} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <PhoneButton label="Back" keycode={4} sendInput={sendInput} />
@@ -379,6 +533,7 @@ export function App() {
             <PhoneButton label="Vol-" keycode={25} sendInput={sendInput} />
           </div>
         )}
+        {showActivity && <ActivityFeed events={serverEvents.activities} />}
       </main>
       {showLogs && (
         <section
