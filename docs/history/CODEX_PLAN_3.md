@@ -1,8 +1,8 @@
 # Porthole Development Plan 3 — Gestures, Assertions, TV Pathfinding, Scale
 
-> Audience: Codex. Sequel to `docs/CODEX_PLAN.md` (implemented) and
-> `docs/CODEX_PLAN_2.md` (implemented; MJPEG shipped as screencap polling per
-> `docs/ADR-MJPEG.md`). Porthole 0.1.1 is live on npm with green 3-OS CI.
+> Audience: Codex. Sequel to `docs/history/CODEX_PLAN.md` (implemented) and
+> `docs/history/CODEX_PLAN_2.md` (implemented; MJPEG shipped as screencap polling per
+> `docs/history/ADR-MJPEG.md`). Porthole 0.1.1 is live on npm with green 3-OS CI.
 >
 > Verified-remaining gaps this plan addresses: no swipe/scroll/long-press
 > input, no macro record/replay, no multi-device, no Playwright e2e, client

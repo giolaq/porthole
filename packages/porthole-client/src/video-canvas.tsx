@@ -1,3 +1,4 @@
+const debug = new URLSearchParams(window.location.search).get("debug") === "1";
 import { useEffect, useRef } from "react";
 import { decodeVideoPacket } from "portholejs/protocol";
 
@@ -126,7 +127,8 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
         configData = new Uint8Array(payload);
         lastConfigRef.current = configData;
         const codec = parseCodecFromSps(configData);
-        console.log(`[porthole] codec=${codec}, config=${configData.length} bytes`);
+        if (debug)
+          console.log(`[porthole] codec=${codec}, config=${configData.length} bytes`);
         decoder.configure({
           codec,
           codedWidth: width,
@@ -180,7 +182,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
     const wsAny = ws as unknown as Record<string, unknown>;
     const early = wsAny._earlyMessages as ArrayBuffer[] | undefined;
     if (early && early.length > 0) {
-      console.log(`[porthole] replaying ${early.length} buffered messages`);
+      if (debug) console.log(`[porthole] replaying ${early.length} buffered messages`);
       for (const msg of early) {
         processMessage(msg);
       }

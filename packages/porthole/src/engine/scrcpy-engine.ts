@@ -19,6 +19,7 @@ import type {
 import type { EngineInputEvent } from "../input.js";
 import { REMOTE_BUTTON_TO_KEYCODE } from "../keycodes.js";
 import { debugLog } from "../log.js";
+import { adbBin, findAndroidSdk } from "../device-manager.js";
 import type { Engine, EngineMetadata, VideoChunk } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -217,7 +218,7 @@ export class ScrcpyEngine implements Engine {
 
   async screenshot(): Promise<Uint8Array> {
     const { stdout } = await execFileAsync(
-      "adb",
+      adbBin(findAndroidSdk()),
       ["-s", this.serial, "exec-out", "screencap", "-p"],
       { encoding: "buffer", maxBuffer: 20 * 1024 * 1024 },
     );
