@@ -21,6 +21,23 @@ export function register(program: Command): void {
     });
 
   program
+    .command("launch <package>")
+    .description("Launch an installed app package")
+    .option("-p, --port <port>", "Session port")
+    .option("-d, --device <serial>", "Target device serial")
+    .option("-q, --quiet", "JSON output")
+    .action((packageName: string, opts: { port?: string; quiet?: boolean }) => {
+      void runCliAction(opts, async () => {
+        const result = await postSessionJson(
+          "/api/launch",
+          { packageName },
+          sessionControlOpts(opts),
+        );
+        printResult(opts.quiet, { ok: true, ...result }, `Launched ${packageName}`);
+      });
+    });
+
+  program
     .command("stop-app <package>")
     .description("Force-stop an app package")
     .option("-p, --port <port>", "Session port")

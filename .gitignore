@@ -9,6 +9,7 @@ packages/assets/*
 !packages/assets/.gitkeep
 assets/*
 !assets/porthole-logo.png
+!assets/collab-demo.png
 packages/porthole/README.md
 packages/porthole/LICENSE
 packages/porthole/skills/

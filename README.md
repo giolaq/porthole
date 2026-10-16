@@ -148,6 +148,7 @@ npx portholejs kill -q
 | `porthole dump-ui [--filter text]`   | Dump the Android UI hierarchy                       |
 | `porthole wait-for <text>`           | Wait until UI text appears                          |
 | `porthole open-url <url>`            | Open a URL or Android deep link                     |
+| `porthole launch <package>`          | Launch an installed app package                     |
 | `porthole stop-app <package>`        | Force-stop an app                                   |
 | `porthole clear-app <package>`       | Clear app data                                      |
 | `porthole activity [--follow]`       | Read or follow the shared activity feed             |
@@ -259,10 +260,11 @@ question that appears in the browser. The human can answer there and draw a
 screen annotation with a note; the agent can retrieve the annotation and its
 captured image through `get_annotations`.
 
-<!-- TODO: Capture the human-agent walkthrough and add assets/collab-demo.gif here. -->
+![Human control, agent question, annotation, and shared activity on a TV session](assets/collab-demo.png)
 
 See [the shared control plane ADR](docs/ADR-shared-control-plane.md) for the
-architecture.
+architecture and [the demo walkthrough](docs/demo/human-agent-demo.md) for a
+scripted example.
 
 ## Agent Skill
 

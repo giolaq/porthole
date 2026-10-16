@@ -9,6 +9,7 @@ export interface EngineMetadata {
 export interface Engine {
   start(): Promise<void>;
   stop(): Promise<void>;
+  /** Replays the latest codec configuration and keyframe when available. */
   onVideoChunk(cb: (chunk: VideoChunk) => void): void;
   onClose?(cb: (error?: Error) => void): void;
   sendInput(event: EngineInputEvent): Promise<void>;
