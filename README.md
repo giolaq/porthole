@@ -210,7 +210,7 @@ Requirements:
 
 Not yet available on Vega: H.264/WebCodecs streaming, touch/gesture input
 (TV profile), `dump-ui`/`focused`/`focus-on`, and MP4 recording. The
-exploration notes live in `docs/VEGA_EXPLORATION.md`.
+exploration notes live in `docs/history/VEGA_EXPLORATION.md`.
 
 ## MCP Setup
 

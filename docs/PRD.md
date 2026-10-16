@@ -71,14 +71,16 @@ D-pad remote, which no lightweight tool offers.
   but v1 neither targets nor tests them. Do not add device-specific code paths.
 - **Audio** forwarding.
 - **Screen recording to file**, except pure H.264-to-MP4 session recording added
-  by `docs/CODEX_PLAN_3.md` Track R.
+  by `docs/history/CODEX_PLAN_3.md` Track R.
 - Wear OS / Android Auto profiles.
 - Heavyweight auth/accounts — only a simple shared token for LAN exposure (§8.7).
 
 ### Added after v1 spec
 
 - Emulator controls such as rotation and `adb emu` passthrough are now in scope
-  for the implementation roadmap in `docs/CODEX_PLAN.md`.
+  for the implementation roadmap in `docs/history/CODEX_PLAN.md`.
+- Fire TV Vega simulator support and multi-device sessions were added after the
+  original v1 specification.
 
 ---
 
@@ -145,7 +147,9 @@ jar is fetched from the pinned upstream release during install.
 ```
 porthole/
   package.json                 npm workspaces root
-  CLAUDE.md                    agent guidance (conventions, gotchas)
+  AGENTS.md                    canonical agent conventions
+  CLAUDE.md                    pointer to AGENTS.md
+  action.yml                   GitHub Action entrypoint
   packages/
     porthole/                  CLI + server + engine + MCP
       src/
@@ -154,14 +158,15 @@ porthole/
         engine/
           types.ts             Engine interface
           scrcpy-engine.ts     scrcpy implementation
+          vega-engine.ts       Fire TV Vega implementation
         server/
-          http.ts              preview UI + /screenshot + static assets
+          http.ts              preview UI + HTTP APIs
+          mjpeg.ts             MJPEG screenshot polling
           ws.ts                video out + input in
         input.ts               InputEvent ↔ scrcpy control / Android keycodes
         keycodes.ts            shared Android keycode table
         mcp/
           server.ts            MCP server (stdio)
-          tools.ts             tool definitions
         profiles.ts            phone vs tv device profile detection
       src/__tests__/
     porthole-client/           React preview UI
@@ -171,8 +176,9 @@ porthole/
         touch-overlay.tsx      phone input
         tv-remote.tsx          TV D-pad remote + keyboard mapping
         device-picker.tsx
-  skill/
-    SKILL.md                   optional Anthropic-style skill
+  e2e/                        Playwright browser tests
+  examples/rn-tvos-app/       demo TV app
+  skills/porthole/SKILL.md    packaged agent skill
 ```
 
 File naming: **kebab-case** for all `.ts`/`.tsx` files.

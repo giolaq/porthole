@@ -1,4 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -21,6 +23,7 @@ import { encodeVideoPacket } from "../protocol.js";
 import { VERSION } from "../version.js";
 
 let engine: Engine | null = null;
+const execFileAsync = promisify(execFile);
 let activeSerial: string | null = null;
 let activeProfile: DeviceProfile | null = null;
 let activeRecording: { recorder: H264Recorder; path: string; startedAt: number } | null =
@@ -441,10 +444,7 @@ export async function startMcpServer(): Promise<void> {
           ],
         };
       }
-      const { execFile: execFileCb } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execFileP = promisify(execFileCb);
-      const { stdout, stderr } = await execFileP(adbBin(findAndroidSdk()), [
+      const { stdout, stderr } = await execFileAsync(adbBin(findAndroidSdk()), [
         "-s",
         activeSerial,
         "install",
@@ -674,9 +674,6 @@ export async function startMcpServer(): Promise<void> {
           ],
         };
       }
-      const { execFile: execFileCb } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execFileP = promisify(execFileCb);
 
       if (!activeSerial) {
         return { content: [{ type: "text", text: "No device serial" }] };
@@ -686,7 +683,7 @@ export async function startMcpServer(): Promise<void> {
       if (filter) args.push(filter);
 
       try {
-        const { stdout } = await execFileP("adb", args);
+        const { stdout } = await execFileAsync(adbBin(findAndroidSdk()), args);
         return { content: [{ type: "text", text: stdout }] };
       } catch (e) {
         return { content: [{ type: "text", text: `logcat error: ${e}` }] };
@@ -700,10 +697,7 @@ export async function startMcpServer(): Promise<void> {
         content: [{ type: "text", text: "No active session. Call attach_device first." }],
       };
     }
-    const { execFile: execFileCb } = await import("node:child_process");
-    const { promisify } = await import("node:util");
-    const execFileP = promisify(execFileCb);
-    const { stdout } = await execFileP(adbBin(findAndroidSdk()), [
+    const { stdout } = await execFileAsync(adbBin(findAndroidSdk()), [
       "-s",
       activeSerial,
       "logcat",
@@ -721,15 +715,12 @@ export async function startMcpServer(): Promise<void> {
 }
 
 async function waitForBootCompleted(serial: string, timeoutMs: number): Promise<void> {
-  const { execFile: execFileCb } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const execFileP = promisify(execFileCb);
   const adb = adbBin(findAndroidSdk());
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
     try {
-      const { stdout } = await execFileP(adb, [
+      const { stdout } = await execFileAsync(adb, [
         "-s",
         serial,
         "shell",

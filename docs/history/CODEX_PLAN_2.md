@@ -1,6 +1,6 @@
 # Porthole Development Plan 2 — Reliability, Agent Tooling, MJPEG
 
-> Audience: Codex. Sequel to `docs/CODEX_PLAN.md`, which is implemented
+> Audience: Codex. Sequel to `docs/history/CODEX_PLAN.md`, which is implemented
 > (commit `dcf9f85`) and was verified live against phone and TV AVDs on
 > 2026-07-07: boot-from-stopped, cross-process kill, headless
 > tap/key/remote/rotate/screenshot, `--detach` JSON, TV touch rejection, and

@@ -1,8 +1,8 @@
 # Porthole Development Plan 4 — One Device, Two Operators
 
 > Audience: Codex (or any coding agent) executing this plan.
-> Sequel to `docs/CODEX_PLAN.md`, `docs/CODEX_PLAN_2.md`, and
-> `docs/CODEX_PLAN_3.md` (all implemented; portholejs 0.4.0 is on npm with
+> Sequel to `docs/history/CODEX_PLAN.md`, `docs/history/CODEX_PLAN_2.md`, and
+> `docs/history/CODEX_PLAN_3.md` (all implemented; portholejs 0.4.0 is on npm with
 > green 3-OS CI, 78 unit tests, Vega support).
 >
 > Goal: turn Porthole into a showcase of **how to adapt a tool for
@@ -81,7 +81,7 @@
     debug lines (lines ~129 and ~183).
   - `cli.ts` is 1135 lines; `server/http.ts` is 699 lines of sequential
     `if (url === ...)` blocks.
-  - `AGENTS.md` and `CLAUDE.md` have drifted (`skill/SKILL.md` vs
+  - `AGENTS.md` and `CLAUDE.md` have drifted (`legacy singular skill path` vs
     `skills/porthole/SKILL.md`; the scrcpy-server rule exists only in
     `AGENTS.md`).
   - `docs/PRD.md` §7 layout lists files that do not exist (`mcp/tools.ts`,
@@ -100,8 +100,7 @@
 - Replace the body of `CLAUDE.md` with a single line `@AGENTS.md` (the same
   pattern `examples/rn-tvos-app/CLAUDE.md` already uses).
 - **Acceptance:** `CLAUDE.md` is one line; `AGENTS.md` layout block matches
-  `ls` of the repo; no reference to `skill/SKILL.md` remains anywhere
-  (`grep -rn "skill/SKILL" --exclude-dir=node_modules .` is empty).
+  `ls` of the repo; no reference to the legacy singular skill path remains.
 
 ### 0.2 Docs housekeeping
 

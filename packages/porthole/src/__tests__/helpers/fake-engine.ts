@@ -6,9 +6,7 @@ export class FakeEngine implements Engine {
   readonly inputs: EngineInputEvent[] = [];
   readonly metadata: EngineMetadata = { codec: "h264", width: 1, height: 1 };
   private readonly listeners = new Set<(chunk: VideoChunk) => void>();
-  private readonly png = new Uint8Array(
-    PNG.sync.write(new PNG({ width: 1, height: 1 })),
-  );
+  private readonly png = new Uint8Array(PNG.sync.write(new PNG({ width: 1, height: 1 })));
 
   async start(): Promise<void> {}
   async stop(): Promise<void> {}

@@ -24,11 +24,16 @@ porthole/
     porthole-logo.png       project logo
   packages/
     porthole/               CLI + server + engine + MCP (src/)
+      assets/scrcpy-server  downloaded at install (gitignored, SHA-256 verified)
+      scripts/download-scrcpy-server.mjs
     porthole-client/        React preview UI (src/)
   docs/
     PRD.md                  source of truth for requirements & milestones
-  skill/
-    SKILL.md                optional agent skill
+    CODEX_PLAN_4.md         current development plan
+  e2e/                      browser end-to-end tests
+  examples/rn-tvos-app/     demo TV app
+  skills/porthole/SKILL.md  packaged agent skill
+  action.yml                GitHub Action entrypoint
 ```
 
 ## Build & test commands

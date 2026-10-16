@@ -8,7 +8,7 @@
 ## Ground rules for the agent
 
 1. **One phase at a time.** A phase is done when `npm run build && npm run test &&
-   npm run lint && npm run typecheck` are all green AND its acceptance criteria pass.
+npm run lint && npm run typecheck` are all green AND its acceptance criteria pass.
 2. **Verify `@yume-chan/*` APIs against npm docs before use** — never from memory.
 3. Engine details stay behind the `Engine` interface (`packages/porthole/src/engine/types.ts`).
 4. Unit tests for all pure logic (no emulator). Integration tests gated behind
@@ -33,11 +33,12 @@ Phases 2–6 does not exist yet.
 ## Phase 0 — Fix the four known bugs (all reproduced live)
 
 ### 0.1 `porthole start <avd>` cannot boot a stopped AVD
+
 - **Repro:** `porthole start Pixel_8_Pro_API_34` with no emulator running →
   `Failed to start: Error: Device has no serial — is it running?`
 - **Cause:** `packages/porthole/src/cli.ts` `start` action:
   `target = devices.find(d => d.name === avd || d.serial === opts.device)` matches
-  the *stopped* AVD entry (which has no serial), so the boot branch
+  the _stopped_ AVD entry (which has no serial), so the boot branch
   (`if (!target && avd)`) never runs.
 - **Fix:** only match running devices for direct attach; if the named AVD exists
   but is stopped, boot it. If `-d/--device` is given, it must match a running serial.
@@ -47,6 +48,7 @@ Phases 2–6 does not exist yet.
   `sys.boot_completed=1`, attaches, prints preview URL.
 
 ### 0.2 Phantom AVD in `porthole list`
+
 - **Repro:** first line of output is
   `INFO | Storing crashdata in: /tmp/... [phone] stopped`.
 - **Cause:** `emulator -list-avds` writes `INFO |` diagnostics to stdout;
@@ -56,6 +58,7 @@ Phases 2–6 does not exist yet.
 - **Test:** unit test with fixture output containing INFO lines.
 
 ### 0.3 `porthole kill` can never work across processes
+
 - **Cause:** `bootedByUs` in `device-manager.ts` is an in-memory `Set` — a fresh
   `porthole kill` process always sees it empty.
 - **Fix:** persist state to disk, serve-sim-style: `$TMPDIR/porthole/state.json`
@@ -68,6 +71,7 @@ Phases 2–6 does not exist yet.
   running), run `porthole kill` from a new shell → emulator shuts down.
 
 ### 0.4 No recovery from stale/offline adb devices
+
 - **Repro:** emulator shows `offline` in `adb devices` after host sleep;
   `porthole start` fails until a manual `adb reconnect offline`.
 - **Fix:** in the attach path, if the target serial is `offline`, run
@@ -119,7 +123,7 @@ important as any code.
   - MCP setup: exact `.mcp.json` snippet and `claude mcp add porthole -- npx portholejs mcp`.
   - Comparison note: "Android sibling of serve-sim" with link.
   - Troubleshooting: SDK not found, adb offline, WebCodecs support, port in use.
-- **2.2 `skill/SKILL.md`** — currently an empty dir. Write an agent skill teaching
+- **2.2 `legacy singular skill path`** — currently an empty dir. Write an agent skill teaching
   the workflow: list → boot/attach → screenshot → input → verify loop, with the
   exact CLI/MCP invocations and TV-specific guidance (use `remote`, never `tap`).
   Mirror the structure of serve-sim's agent skill.
@@ -149,7 +153,7 @@ drag-drop, gestures, stats.
   logs in the browser".
 - **3.3 Drag-and-drop install & push:** drop an `.apk` on the video → `adb install`
   with progress toast; drop image/video/other files → push to `/sdcard/Download`
-  + media scan. (Android's analog of serve-sim's drag-drop injection.)
+  - media scan. (Android's analog of serve-sim's drag-drop injection.)
 - **3.4 Phone hardware keys:** Back/Home/Recents/Power/Vol± buttons under the
   phone frame (keycodes already in `keycodes.ts`).
 - **3.5 Keyboard capture:** when the video has focus, forward printable keys as
@@ -238,16 +242,16 @@ These supersede the PRD §4 "extended controls" deferral — update PRD when shi
 
 ## Suggested order & sizing
 
-| Phase | Value | Effort | Notes |
-|---|---|---|---|
-| 0 Bugs | Unblocks everything | S | Do first, single PR per bug |
-| 1 CLI input | Closes FR-6.2, agent-critical | M | Depends on 0.3 state file |
-| 2 Docs/DX | Adoption | S–M | Can run parallel to 1 |
-| 4.1/4.5 Daemon + MCP polish | Agent workflows | M | Before UI extras |
-| 3 Web UI | Product feel | M–L | 3.1–3.4 first |
-| 4.2–4.4 Middleware/token/mjpeg | Parity | M–L | mjpeg needs a spike |
-| 5 Device controls | Delight | M–L | 5.4 multi-device last |
-| 6 Release | Ship it | M | 6.1 early is fine too |
+| Phase                          | Value                         | Effort | Notes                       |
+| ------------------------------ | ----------------------------- | ------ | --------------------------- |
+| 0 Bugs                         | Unblocks everything           | S      | Do first, single PR per bug |
+| 1 CLI input                    | Closes FR-6.2, agent-critical | M      | Depends on 0.3 state file   |
+| 2 Docs/DX                      | Adoption                      | S–M    | Can run parallel to 1       |
+| 4.1/4.5 Daemon + MCP polish    | Agent workflows               | M      | Before UI extras            |
+| 3 Web UI                       | Product feel                  | M–L    | 3.1–3.4 first               |
+| 4.2–4.4 Middleware/token/mjpeg | Parity                        | M–L    | mjpeg needs a spike         |
+| 5 Device controls              | Delight                       | M–L    | 5.4 multi-device last       |
+| 6 Release                      | Ship it                       | M      | 6.1 early is fine too       |
 
 **Definition of "great":** a developer or agent runs `npx portholejs`, gets a
 streaming, controllable emulator in one command; the README convinces them in

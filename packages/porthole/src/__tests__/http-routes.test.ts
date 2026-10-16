@@ -5,7 +5,11 @@ import { FakeEngine } from "./helpers/fake-engine.js";
 
 const servers: Server[] = [];
 afterEach(async () => {
-  await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  await Promise.all(
+    servers
+      .splice(0)
+      .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+  );
 });
 
 async function start() {
@@ -37,12 +41,23 @@ describe("HTTP route contract", () => {
   });
 
   it.each([
-    ["POST", "/api/input"], ["POST", "/api/rotate"], ["POST", "/api/emu"],
-    ["GET", "/api/ui"], ["GET", "/api/focused"], ["POST", "/api/focus_on"],
-    ["POST", "/api/find"], ["POST", "/api/wait_for"], ["POST", "/api/open_url"],
-    ["POST", "/api/stop_app"], ["POST", "/api/clear_app"], ["GET", "/api/apps"],
-    ["POST", "/api/launch"], ["POST", "/api/install"], ["POST", "/api/push"],
-    ["GET", "/api/logcat"], ["GET", "/api/crashes"],
+    ["POST", "/api/input"],
+    ["POST", "/api/rotate"],
+    ["POST", "/api/emu"],
+    ["GET", "/api/ui"],
+    ["GET", "/api/focused"],
+    ["POST", "/api/focus_on"],
+    ["POST", "/api/find"],
+    ["POST", "/api/wait_for"],
+    ["POST", "/api/open_url"],
+    ["POST", "/api/stop_app"],
+    ["POST", "/api/clear_app"],
+    ["GET", "/api/apps"],
+    ["POST", "/api/launch"],
+    ["POST", "/api/install"],
+    ["POST", "/api/push"],
+    ["GET", "/api/logcat"],
+    ["GET", "/api/crashes"],
   ])("preserves missing-device response for %s %s", async (method, path) => {
     const { base } = await start();
     const response = await fetch(base + path, { method });
