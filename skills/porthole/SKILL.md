@@ -126,5 +126,23 @@ When MCP is configured, use:
 - `tap`, `swipe`, `scroll`, and `long_press` only for phone profiles
 - `read_logcat` to diagnose crashes or focus issues
 - `install_apk` to load a freshly built APK
+- `get_control_state` to see whether the human has paused agent input
+- `get_recent_activity` to review actions from every operator
+- `say` to explain an upcoming sequence in the shared activity feed
+- `ask_human` when a choice needs the person watching the browser
+- `get_annotations` when a tool result reports unread human notes
 
 Keep the loop tight: input, screenshot, compare, adjust.
+
+## Working alongside a human
+
+1. Call `attach_device`, then `get_control_state`. If `holder` is `human`,
+   observe the screen and activity without sending input.
+2. Use `say` to state your intent before a multi-step or destructive sequence.
+3. On `PAUSED_BY_HUMAN`, stop sending input. Call `get_recent_activity` to see
+   what the human did, then wait or use `ask_human` to resolve the next step.
+4. When a tool result reports unread human notes, call `get_annotations` and
+   inspect the marked region and note before continuing.
+5. Use `ask_human` for ambiguous choices, such as which account or build to
+   use or whether a visual difference is a bug. Do not guess.
+6. After risky steps, call `get_crashes` and `screenshot` to check the result.

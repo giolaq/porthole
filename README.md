@@ -150,6 +150,10 @@ npx portholejs kill -q
 | `porthole open-url <url>`            | Open a URL or Android deep link                     |
 | `porthole stop-app <package>`        | Force-stop an app                                   |
 | `porthole clear-app <package>`       | Clear app data                                      |
+| `porthole activity [--follow]`       | Read or follow the shared activity feed             |
+| `porthole control [shared/human]`    | Read or change who controls the device              |
+| `porthole ask "<question>"`          | Ask the browser operator and wait for an answer     |
+| `porthole say "<message>"`           | Post an intent note to the activity feed            |
 | `porthole rotate <orientation>`      | Rotate a phone emulator                             |
 | `porthole emu <args...>`             | Pass through to `adb emu`                           |
 | `porthole doctor`                    | Diagnose Node/SDK/adb/AVD/session problems          |
@@ -237,7 +241,28 @@ Useful MCP tools: `list_devices`, `boot_device`, `wait_for_boot`,
 `attach_device`, `tap`, `swipe`, `long_press`, `scroll`, `key`, `remote`,
 `type_text`, `screenshot`, `assert_screen`, `start_recording`, `stop_recording`,
 `dump_ui`, `get_focused`, `focus_on`, `find_element`, `wait_for`, `open_url`,
-`stop_app`, `clear_app`, `get_crashes`, `read_logcat`, and `install_apk`.
+`stop_app`, `clear_app`, `get_crashes`, `read_logcat`, `install_apk`,
+`get_recent_activity`, `get_control_state`, `ask_human`, `get_annotations`,
+and `say`.
+
+## Humans and agents, one device
+
+The browser, CLI, and MCP share one live device session. The activity feed
+shows who acted and whether the action succeeded. Agent taps appear briefly
+over the phone preview; agent remote presses highlight the TV remote button.
+This makes the agent's input visible to the person watching the emulator.
+
+The browser's control button lets the human take control and later hand it
+back. While the human holds control, agent input returns `PAUSED_BY_HUMAN`.
+The agent can review recent activity, post its intent with `say`, or ask a
+question that appears in the browser. The human can answer there and draw a
+screen annotation with a note; the agent can retrieve the annotation and its
+captured image through `get_annotations`.
+
+<!-- TODO: Capture the human-agent walkthrough and add assets/collab-demo.gif here. -->
+
+See [the shared control plane ADR](docs/ADR-shared-control-plane.md) for the
+architecture.
 
 ## Agent Skill
 
