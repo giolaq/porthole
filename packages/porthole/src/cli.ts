@@ -40,6 +40,7 @@ const commandOrder = [
   "dump-ui",
   "wait-for",
   "open-url",
+  "launch",
   "stop-app",
   "clear-app",
   "mcp",

@@ -148,6 +148,7 @@ npx portholejs kill -q
 | `porthole dump-ui [--filter text]`   | Dump the Android UI hierarchy                       |
 | `porthole wait-for <text>`           | Wait until UI text appears                          |
 | `porthole open-url <url>`            | Open a URL or Android deep link                     |
+| `porthole launch <package>`          | Launch an installed app package                     |
 | `porthole stop-app <package>`        | Force-stop an app                                   |
 | `porthole clear-app <package>`       | Clear app data                                      |
 | `porthole activity [--follow]`       | Read or follow the shared activity feed             |
@@ -262,7 +263,8 @@ captured image through `get_annotations`.
 <!-- TODO: Capture the human-agent walkthrough and add assets/collab-demo.gif here. -->
 
 See [the shared control plane ADR](docs/ADR-shared-control-plane.md) for the
-architecture.
+architecture and [the demo walkthrough](docs/demo/human-agent-demo.md) for a
+scripted example.
 
 ## Agent Skill
 

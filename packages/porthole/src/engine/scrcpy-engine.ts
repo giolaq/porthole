@@ -39,6 +39,8 @@ export class ScrcpyEngine implements Engine {
   private readonly bitrate?: number;
   private readonly serverPath: string;
   private videoCallbacks: Array<(chunk: VideoChunk) => void> = [];
+  private lastConfig: VideoChunk | null = null;
+  private lastKeyframe: VideoChunk | null = null;
   private closeCallbacks: Array<(error?: Error) => void> = [];
   private client: AdbScrcpyClient<AdbScrcpyOptions3_1<true>> | null = null;
   private controller: ScrcpyControlMessageWriter | null = null;
@@ -135,6 +137,10 @@ export class ScrcpyEngine implements Engine {
 
           if (chunk.type === "frame") {
             this.lastFrame = chunk.data;
+            if (chunk.keyframe) this.lastKeyframe = chunk;
+          } else {
+            this.lastConfig = chunk;
+            this.lastKeyframe = null;
           }
 
           for (const cb of this.videoCallbacks) {
@@ -152,6 +158,8 @@ export class ScrcpyEngine implements Engine {
 
   onVideoChunk(cb: (chunk: VideoChunk) => void): void {
     this.videoCallbacks.push(cb);
+    if (this.lastConfig) cb(this.lastConfig);
+    if (this.lastKeyframe) cb(this.lastKeyframe);
   }
 
   onClose(cb: (error?: Error) => void): void {
@@ -239,6 +247,8 @@ export class ScrcpyEngine implements Engine {
     this.adb = null;
     this._metadata = null;
     this.lastFrame = null;
+    this.lastConfig = null;
+    this.lastKeyframe = null;
     this.videoCallbacks = [];
     this.closeCallbacks = [];
   }

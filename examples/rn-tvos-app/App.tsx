@@ -63,6 +63,8 @@ function MovieCard({ movie, hasInitialFocus }: { movie: Movie; hasInitialFocus: 
     >
       <Pressable
         focusable
+        testID={movie.title}
+        accessibilityLabel={movie.title}
         hasTVPreferredFocus={hasInitialFocus}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}

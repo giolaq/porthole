@@ -63,12 +63,14 @@ describe("recording routes", () => {
         body: JSON.stringify(body),
       });
     const output = join(dir, "capture.mp4");
+    // A recorder joins an already-running stream after its codec header and
+    // latest keyframe. Static screens may not emit another frame for a while.
+    engine.emitChunk({ type: "config", data: config });
+    engine.emitChunk({ type: "frame", data: frame, timestamp: 33_333, keyframe: true });
     expect((await post("/api/recording/start", { path: output })).status).toBe(200);
     const duplicate = await post("/api/recording/start", { path: output });
     expect(duplicate.status).toBe(409);
     expect(((await duplicate.json()) as { code: string }).code).toBe("RECORDING_ACTIVE");
-    engine.emitChunk({ type: "config", data: config });
-    engine.emitChunk({ type: "frame", data: frame, timestamp: 33_333, keyframe: true });
     const stopped = await post("/api/recording/stop", {});
     expect(stopped.status).toBe(200);
     const result = (await stopped.json()) as { bytes: number; path: string };

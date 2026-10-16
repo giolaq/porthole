@@ -77,26 +77,37 @@ test("human and agent share activity, hand-off, and a question", async ({ page }
   const health = (await (await page.request.get("/health")).json()) as {
     device?: { profile?: string };
   };
-  test.skip(
-    health.device?.profile !== "phone",
-    "Touch ghost scenario requires a phone AVD.",
-  );
+  const isTv = health.device?.profile === "tv";
   const agentHeaders = { "x-porthole-actor": "agent:test" };
-  await page.request.post("/api/input", {
-    headers: agentHeaders,
-    data: { kind: "touch", phase: "down", x: 0.5, y: 0.5 },
-  });
-  await page.request.post("/api/input", {
-    headers: agentHeaders,
-    data: { kind: "touch", phase: "up", x: 0.5, y: 0.5 },
-  });
-  await expect(page.getByTestId("activity-feed").getByText("tap").first()).toBeVisible();
-  await expect(page.getByTestId("input-ghost")).toBeVisible();
+  const agentInput = isTv
+    ? { kind: "remote", button: "dpad_right" }
+    : { kind: "touch", phase: "down", x: 0.5, y: 0.5 };
+  await page.request.post("/api/input", { headers: agentHeaders, data: agentInput });
+  if (!isTv) {
+    await page.request.post("/api/input", {
+      headers: agentHeaders,
+      data: { kind: "touch", phase: "up", x: 0.5, y: 0.5 },
+    });
+  }
+  await expect(
+    page
+      .getByTestId("activity-feed")
+      .getByText(isTv ? "remote" : "tap")
+      .first(),
+  ).toBeVisible();
+  if (isTv) {
+    await expect(page.locator(".tv-remote")).toHaveAttribute(
+      "data-ghost-button",
+      "dpad_right",
+    );
+  } else {
+    await expect(page.getByTestId("input-ghost")).toBeVisible();
+  }
   await page.getByTestId("control-toggle").click();
   await expect(page.getByTestId("control-banner")).toBeVisible();
   const rejected = await page.request.post("/api/input", {
     headers: agentHeaders,
-    data: { kind: "touch", phase: "down", x: 0.4, y: 0.4 },
+    data: agentInput,
   });
   expect(rejected.status()).toBe(423);
   await expect(page.getByText("Agent input paused while you have control")).toBeVisible();
@@ -115,4 +126,6 @@ test("human and agent share activity, hand-off, and a question", async ({ page }
   };
   expect(answer.status).toBe("answered");
   expect(answer.answer?.text).toBe("Yes");
+  await page.getByTestId("control-toggle").click();
+  await expect(page.getByTestId("control-banner")).toBeHidden();
 });
