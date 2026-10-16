@@ -3,6 +3,8 @@ import type { DeviceInfo } from "../device-manager.js";
 import type { EngineInputEvent } from "../input.js";
 import type { Actor } from "../protocol.js";
 import { PortholeError } from "./errors.js";
+import type { ActivityBus } from "../activity.js";
+import type { ControlState } from "../protocol.js";
 
 export interface SessionHandle {
   getEngine(deviceId?: string): Engine | null;
@@ -11,6 +13,8 @@ export interface SessionHandle {
   defaultDeviceId(): string;
   sendInput(event: EngineInputEvent, deviceId?: string): Promise<void>;
   isVega?(): boolean;
+  readonly activityBus?: ActivityBus;
+  getControlState?(deviceId: string): ControlState;
 }
 
 export interface ActionContext {

@@ -173,7 +173,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
 
     // Process any buffered messages and handle new ones
     const handleMessage = (event: MessageEvent) => {
-      processMessage(event.data as ArrayBuffer);
+      if (event.data instanceof ArrayBuffer) processMessage(event.data);
     };
 
     ws.addEventListener("message", handleMessage);

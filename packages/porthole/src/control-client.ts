@@ -59,6 +59,16 @@ export async function fetchSessionScreenshot(
   };
 }
 
+export async function getSessionBytes(
+  path: string,
+  opts: ControlClientOptions = {},
+): Promise<Uint8Array> {
+  const session = await discoverSession(opts);
+  const res = await fetch(sessionUrl(session, path), { headers: actorHeaders(opts) });
+  if (!res.ok) throw await responseError(res);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 export async function postSessionJson(
   path: string,
   body: unknown,

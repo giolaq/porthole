@@ -2,6 +2,11 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ControlClientError } from "../control-client.js";
 import { PortholeError } from "../actions/errors.js";
 
+let inboxProvider: (() => Promise<string | undefined>) | undefined;
+export function setInboxProvider(provider: () => Promise<string | undefined>): void {
+  inboxProvider = provider;
+}
+
 export function ok(value: unknown, text?: string, structured = true): CallToolResult {
   const content = [{ type: "text" as const, text: text ?? JSON.stringify(value) }];
   return structured &&
@@ -42,9 +47,13 @@ export function fail(error: unknown): CallToolResult {
 export async function guarded(
   fn: () => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
+  let result: CallToolResult;
   try {
-    return await fn();
+    result = await fn();
   } catch (error) {
-    return fail(error);
+    result = fail(error);
   }
+  const hint = await inboxProvider?.();
+  if (hint) result.content.push({ type: "text", text: hint });
+  return result;
 }

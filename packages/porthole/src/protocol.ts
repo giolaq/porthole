@@ -96,6 +96,52 @@ export function parseActor(value: string | undefined | null, fallback: Actor): A
   return { kind: kind as ActorKind, id: id.slice(0, 64) };
 }
 
+export interface ActivityEvent {
+  id: number;
+  ts: string;
+  deviceId: string;
+  actor: Actor;
+  action: string;
+  params?: Record<string, unknown>;
+  outcome: "ok" | "error" | "rejected";
+  error?: { code: string; message: string };
+  durationMs?: number;
+}
+
+export interface ControlState {
+  holder: "shared" | "human";
+  since: string;
+  by?: Actor;
+  reason?: string;
+}
+
+export interface HumanQuestion {
+  id: string;
+  deviceId: string;
+  askedBy: Actor;
+  text: string;
+  options?: string[];
+  createdAt: string;
+  answer?: { text: string; by: Actor; at: string };
+  status: "open" | "answered" | "expired";
+}
+
+export interface HumanAnnotation {
+  id: number;
+  deviceId: string;
+  by: Actor;
+  rect: { x: number; y: number; w: number; h: number };
+  note: string;
+  createdAt: string;
+  dismissed: boolean;
+}
+
+export type ServerEvent =
+  | { type: "activity"; event: ActivityEvent }
+  | { type: "control"; state: ControlState; deviceId: string }
+  | { type: "question"; question: HumanQuestion }
+  | { type: "annotation"; annotation: HumanAnnotation };
+
 export interface ProtocolDevice {
   name: string;
   serial: string | null;

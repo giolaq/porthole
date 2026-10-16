@@ -5,6 +5,7 @@ import { register as registerLifecycle } from "./cli/lifecycle.js";
 import { register as registerInput } from "./cli/input.js";
 import { register as registerInspect } from "./cli/inspect.js";
 import { register as registerApps } from "./cli/apps.js";
+import { register as registerCollab } from "./cli/collab.js";
 
 const program = new Command();
 if (Number(process.versions.node.split(".")[0] ?? "0") < 20) {
@@ -16,6 +17,7 @@ registerLifecycle(program);
 registerInput(program);
 registerInspect(program);
 registerApps(program);
+registerCollab(program);
 const commandOrder = [
   "list",
   "doctor",
@@ -41,6 +43,10 @@ const commandOrder = [
   "stop-app",
   "clear-app",
   "mcp",
+  "activity",
+  "control",
+  "ask",
+  "say",
 ];
 (program.commands as Command[]).sort(
   (a, b) => commandOrder.indexOf(a.name()) - commandOrder.indexOf(b.name()),

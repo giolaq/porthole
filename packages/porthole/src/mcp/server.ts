@@ -8,6 +8,8 @@ import { register as registerScreen } from "./tools/screen.js";
 import { register as registerUi } from "./tools/ui.js";
 import { register as registerApps } from "./tools/apps.js";
 import { register as registerLogs } from "./tools/logs.js";
+import { register as registerCollab } from "./tools/collab.js";
+import { setInboxProvider } from "./result.js";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer(
@@ -23,12 +25,14 @@ export function createMcpServer(): McpServer {
     },
   );
   const link = new SessionLink();
+  setInboxProvider(() => link.inboxHint());
   registerLifecycle(server, link);
   registerInput(server, link);
   registerScreen(server, link);
   registerUi(server, link);
   registerApps(server, link);
   registerLogs(server, link);
+  registerCollab(server, link);
   return server;
 }
 

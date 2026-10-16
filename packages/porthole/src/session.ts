@@ -13,6 +13,10 @@ import { removeSession, upsertSession } from "./state.js";
 import { clientDistPath, scrcpyServerPath } from "./paths.js";
 import { adbBin, findAndroidSdk } from "./device-manager.js";
 import { AndroidKeycode } from "./keycodes.js";
+import { ActivityBus } from "./activity.js";
+import type { Actor, ControlState, ServerEvent } from "./protocol.js";
+import { QuestionStore } from "./questions.js";
+import { AnnotationStore } from "./annotations.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -46,6 +50,12 @@ interface DeviceRuntime {
 }
 
 export class Session {
+  readonly activityBus = new ActivityBus();
+  readonly questions = new QuestionStore(this.activityBus);
+  readonly annotations = new AnnotationStore(this.activityBus);
+  private readonly controlStates = new Map<string, ControlState>();
+  private broadcastServerEvent: ((event: ServerEvent, deviceId: string) => void) | null =
+    null;
   private server: Server | null = null;
   private stopPromise: Promise<void> | null = null;
   private attachEngine: ((deviceId: string, engine: Engine) => void) | null = null;
@@ -78,6 +88,10 @@ export class Session {
         status: "waiting",
         bootedByUs: entry.bootedByUs ?? opts.bootedByUs ?? false,
       });
+      this.controlStates.set(entry.device.serial, {
+        holder: "shared",
+        since: new Date().toISOString(),
+      });
     }
     const first = devices[0]?.device.serial;
     if (!first) throw new Error("At least one running device is required.");
@@ -106,21 +120,31 @@ export class Session {
       getDevice: (deviceId) => this.getDevice(deviceId),
       getDevices: () => this.getDevices(),
       sessionHandle: this,
+      activityBus: this.activityBus,
+      questionStore: this.questions,
+      annotationStore: this.annotations,
+      getControlState: (id) => this.getControlState(id),
+      setControlState: (id, holder, by, reason) =>
+        this.setControlState(id, holder, by, reason),
       token: this.token,
       forceMjpeg: this.forceMjpeg,
       getStatus: (deviceId) => this.getStatus(deviceId),
     });
     this.server = server;
 
-    const { attachEngine } = createWsServer({
+    const { attachEngine, broadcast } = createWsServer({
       httpServer: server,
       getEngine: (deviceId) => this.getEngine(deviceId),
       getDevice: (deviceId) => this.getDevice(deviceId),
       getDefaultDeviceId: () => this.defaultSerial,
       token: this.token,
       sessionHandle: this,
+      activityBus: this.activityBus,
+      questionStore: this.questions,
+      annotationStore: this.annotations,
     });
     this.attachEngine = attachEngine;
+    this.broadcastServerEvent = broadcast;
 
     await Promise.all(
       [...this.runtimes.values()].map((runtime) => this.startEngine(runtime)),
@@ -225,6 +249,39 @@ export class Session {
 
   isVega(): boolean {
     return this.engineKind === "vega";
+  }
+
+  getControlState(deviceId: string): ControlState {
+    return (
+      this.controlStates.get(deviceId) ?? {
+        holder: "shared",
+        since: new Date().toISOString(),
+      }
+    );
+  }
+
+  setControlState(
+    deviceId: string,
+    holder: "shared" | "human",
+    by: Actor,
+    reason?: string,
+  ): ControlState {
+    this.getRuntime(deviceId);
+    const state: ControlState = { holder, since: new Date().toISOString(), by, reason };
+    this.controlStates.set(deviceId, state);
+    this.activityBus.publish({
+      deviceId,
+      actor: by,
+      action: "control",
+      params: { holder, reason },
+      outcome: "ok",
+    });
+    this.broadcastServerEvent?.({ type: "control", state, deviceId }, deviceId);
+    return state;
+  }
+
+  publishServerEvent(event: ServerEvent, deviceId: string): void {
+    this.broadcastServerEvent?.(event, deviceId);
   }
 
   getDevice(deviceId?: string): DeviceInfo | undefined {

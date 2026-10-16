@@ -5,6 +5,13 @@ import type { Engine } from "../engine/types.js";
 import type { InputEvent } from "../input.js";
 import type { DeviceInfo } from "../device-manager.js";
 import type { SessionHandle } from "../actions/context.js";
+import { ActivityBus } from "../activity.js";
+import { QuestionStore } from "../questions.js";
+import { AnnotationStore } from "../annotations.js";
+import { questionRoutes } from "./routes/questions.js";
+import { annotationRoutes } from "./routes/annotations.js";
+import { narrationRoutes } from "./routes/narration.js";
+import type { ControlState } from "../protocol.js";
 import { MjpegPoller } from "./mjpeg.js";
 import { routeRequest } from "./router.js";
 import { healthRoutes } from "./routes/health.js";
@@ -14,6 +21,8 @@ import { uiRoutes } from "./routes/ui.js";
 import { appsRoutes } from "./routes/apps.js";
 import { logsRoutes } from "./routes/logs.js";
 import { recordingRoutes } from "./routes/recording.js";
+import { activityRoutes } from "./routes/activity.js";
+import { controlRoutes } from "./routes/control.js";
 
 const routes = [
   ...healthRoutes,
@@ -23,6 +32,11 @@ const routes = [
   ...appsRoutes,
   ...logsRoutes,
   ...recordingRoutes,
+  ...activityRoutes,
+  ...controlRoutes,
+  ...questionRoutes,
+  ...annotationRoutes,
+  ...narrationRoutes,
 ];
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -43,12 +57,29 @@ export interface HttpServerOptions {
   getDevices?: () => DeviceInfo[];
   handleInput?: (event: InputEvent, deviceId?: string) => Promise<void>;
   sessionHandle?: SessionHandle;
+  activityBus?: ActivityBus;
+  questionStore?: QuestionStore;
+  annotationStore?: AnnotationStore;
+  getControlState?: (deviceId: string) => ControlState;
+  setControlState?: (
+    deviceId: string,
+    holder: "shared" | "human",
+    by: import("../protocol.js").Actor,
+    reason?: string,
+  ) => ControlState;
   token?: string;
   forceMjpeg?: boolean;
   getStatus?: (deviceId?: string) => "waiting" | "ok" | "reconnecting" | "dead";
 }
 
 export function createHttpServer(opts: HttpServerOptions) {
+  const activityBus = opts.activityBus ?? new ActivityBus();
+  opts = {
+    ...opts,
+    activityBus,
+    questionStore: opts.questionStore ?? new QuestionStore(activityBus),
+    annotationStore: opts.annotationStore ?? new AnnotationStore(activityBus),
+  };
   const { port, host, clientDir } = opts;
   const mjpegPollers = new Map<string, MjpegPoller>();
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
