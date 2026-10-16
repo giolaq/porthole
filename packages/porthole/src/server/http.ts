@@ -4,6 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import type { Engine } from "../engine/types.js";
 import type { InputEvent } from "../input.js";
 import type { DeviceInfo } from "../device-manager.js";
+import type { SessionHandle } from "../actions/context.js";
 import { MjpegPoller } from "./mjpeg.js";
 import { routeRequest } from "./router.js";
 import { healthRoutes } from "./routes/health.js";
@@ -12,6 +13,7 @@ import { inputRoutes } from "./routes/input.js";
 import { uiRoutes } from "./routes/ui.js";
 import { appsRoutes } from "./routes/apps.js";
 import { logsRoutes } from "./routes/logs.js";
+import { recordingRoutes } from "./routes/recording.js";
 
 const routes = [
   ...healthRoutes,
@@ -20,6 +22,7 @@ const routes = [
   ...uiRoutes,
   ...appsRoutes,
   ...logsRoutes,
+  ...recordingRoutes,
 ];
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -39,6 +42,7 @@ export interface HttpServerOptions {
   getDevice?: (deviceId?: string) => DeviceInfo | undefined;
   getDevices?: () => DeviceInfo[];
   handleInput?: (event: InputEvent, deviceId?: string) => Promise<void>;
+  sessionHandle?: SessionHandle;
   token?: string;
   forceMjpeg?: boolean;
   getStatus?: (deviceId?: string) => "waiting" | "ok" | "reconnecting" | "dead";

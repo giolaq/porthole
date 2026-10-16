@@ -1,5 +1,7 @@
 import type { Route } from "../router.js";
 import { MjpegPoller } from "../mjpeg.js";
+import { actionContext } from "../router.js";
+import { screenshot } from "../../actions/screen.js";
 
 export const mediaRoutes: Route[] = [
   {
@@ -37,7 +39,7 @@ export const mediaRoutes: Route[] = [
         return;
       }
       try {
-        const png = await engine.screenshot();
+        const png = await screenshot(actionContext(ctx));
         res.writeHead(200, {
           "Content-Type": "image/png",
           "Content-Length": png.byteLength.toString(),
@@ -63,7 +65,7 @@ export const mediaRoutes: Route[] = [
         return;
       }
       try {
-        const png = await engine.screenshot();
+        const png = await screenshot(actionContext(ctx));
         res.writeHead(200, {
           "Content-Type": "image/png",
           "Content-Length": png.byteLength.toString(),

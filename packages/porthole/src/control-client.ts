@@ -1,11 +1,30 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { InputEvent } from "./input.js";
+import { ACTOR_HEADER, formatActor, type Actor } from "./protocol.js";
 import { readState, removeSession, type PortholeSessionRecord } from "./state.js";
 
 export interface ControlClientOptions {
   port?: number;
   device?: string;
+  actor?: Actor;
+}
+
+export class ControlClientError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly retryable: boolean,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+function actorHeaders(opts: ControlClientOptions): Record<string, string> {
+  return {
+    [ACTOR_HEADER]: formatActor(opts.actor ?? { kind: process.env["CI"] ? "ci" : "cli" }),
+  };
 }
 
 export async function sendSessionInput(
@@ -15,11 +34,11 @@ export async function sendSessionInput(
   const session = await discoverSession(opts);
   const res = await fetch(sessionUrl(session, "/api/input"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...actorHeaders(opts) },
     body: JSON.stringify(event),
   });
   if (!res.ok) {
-    throw new Error(await responseError(res));
+    throw await responseError(res);
   }
   return session;
 }
@@ -28,9 +47,11 @@ export async function fetchSessionScreenshot(
   opts: ControlClientOptions = {},
 ): Promise<{ session: PortholeSessionRecord; png: Uint8Array }> {
   const session = await discoverSession(opts);
-  const res = await fetch(sessionUrl(session, "/screenshot"));
+  const res = await fetch(sessionUrl(session, "/screenshot"), {
+    headers: actorHeaders(opts),
+  });
   if (!res.ok) {
-    throw new Error(await responseError(res));
+    throw await responseError(res);
   }
   return {
     session,
@@ -46,12 +67,28 @@ export async function postSessionJson(
   const session = await discoverSession(opts);
   const res = await fetch(sessionUrl(session, path), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...actorHeaders(opts) },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(await responseError(res));
+    throw await responseError(res);
   }
+  return { session, response: await res.json() };
+}
+
+export async function postSessionBytes(
+  path: string,
+  body: Uint8Array,
+  filename: string,
+  opts: ControlClientOptions = {},
+): Promise<{ session: PortholeSessionRecord; response: unknown }> {
+  const session = await discoverSession(opts);
+  const res = await fetch(sessionUrl(session, path), {
+    method: "POST",
+    headers: { ...actorHeaders(opts), "x-porthole-filename": filename },
+    body: Buffer.from(body),
+  });
+  if (!res.ok) throw await responseError(res);
   return { session, response: await res.json() };
 }
 
@@ -60,9 +97,9 @@ export async function getSessionJson(
   opts: ControlClientOptions = {},
 ): Promise<{ session: PortholeSessionRecord; response: unknown }> {
   const session = await discoverSession(opts);
-  const res = await fetch(sessionUrl(session, path));
+  const res = await fetch(sessionUrl(session, path), { headers: actorHeaders(opts) });
   if (!res.ok) {
-    throw new Error(await responseError(res));
+    throw await responseError(res);
   }
   return { session, response: await res.json() };
 }
@@ -77,7 +114,7 @@ export async function discoverSession(
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 
   for (const session of candidates) {
-    if (await isSessionAlive(session)) {
+    if (await isSessionAlive(session, opts)) {
       return session;
     }
     await removeSession({ port: session.port, pid: session.pid });
@@ -101,10 +138,14 @@ export async function writeScreenshot(path: string, png: Uint8Array): Promise<vo
   await writeFile(path, png);
 }
 
-async function isSessionAlive(session: PortholeSessionRecord): Promise<boolean> {
+async function isSessionAlive(
+  session: PortholeSessionRecord,
+  opts: ControlClientOptions,
+): Promise<boolean> {
   try {
     const res = await fetch(sessionUrl(session, "/health"), {
       signal: AbortSignal.timeout(1000),
+      headers: actorHeaders(opts),
     });
     return res.ok;
   } catch {
@@ -126,12 +167,24 @@ function sessionUrl(session: PortholeSessionRecord, path: string): string {
   return url.toString();
 }
 
-async function responseError(res: Response): Promise<string> {
+async function responseError(res: Response): Promise<ControlClientError> {
   try {
     const body = (await res.json()) as Record<string, unknown>;
-    if (typeof body.error === "string") return body.error;
+    if (typeof body.error === "string") {
+      return new ControlClientError(
+        body.error,
+        typeof body.code === "string" ? body.code : "BAD_REQUEST",
+        body.retryable === true,
+        res.status,
+      );
+    }
   } catch {
     // fall through
   }
-  return `${res.status} ${res.statusText}`.trim();
+  return new ControlClientError(
+    `${res.status} ${res.statusText}`.trim(),
+    "BAD_REQUEST",
+    false,
+    res.status,
+  );
 }

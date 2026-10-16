@@ -8,8 +8,7 @@ import { VegaEngine } from "./engine/vega-engine.js";
 import { createHttpServer } from "./server/http.js";
 import { createWsServer } from "./server/ws.js";
 import type { DeviceInfo } from "./device-manager.js";
-import type { InputEvent } from "./input.js";
-import { sendGesture } from "./gesture.js";
+import type { EngineInputEvent } from "./input.js";
 import { removeSession, upsertSession } from "./state.js";
 import { clientDistPath, scrcpyServerPath } from "./paths.js";
 import { adbBin, findAndroidSdk } from "./device-manager.js";
@@ -106,7 +105,7 @@ export class Session {
       getEngine: (deviceId) => this.getEngine(deviceId),
       getDevice: (deviceId) => this.getDevice(deviceId),
       getDevices: () => this.getDevices(),
-      handleInput: (event, deviceId) => this.sendInput(event, deviceId),
+      sessionHandle: this,
       token: this.token,
       forceMjpeg: this.forceMjpeg,
       getStatus: (deviceId) => this.getStatus(deviceId),
@@ -119,6 +118,7 @@ export class Session {
       getDevice: (deviceId) => this.getDevice(deviceId),
       getDefaultDeviceId: () => this.defaultSerial,
       token: this.token,
+      sessionHandle: this,
     });
     this.attachEngine = attachEngine;
 
@@ -194,17 +194,13 @@ export class Session {
     }
   }
 
-  async sendInput(event: InputEvent, deviceId?: string): Promise<void> {
+  async sendInput(event: EngineInputEvent, deviceId?: string): Promise<void> {
     const runtime = this.getRuntime(deviceId);
     const engine = runtime.engine;
     if (!engine) throw new Error("Session not started");
     // TV auto-wake uses adb dumpsys, which does not exist on Vega guests.
     if (runtime.device.profile === "tv" && this.engineKind === "scrcpy") {
       await this.ensureTvAwake(runtime);
-    }
-    if (event.kind === "gesture") {
-      await sendGesture(event, (touch) => engine.sendInput(touch));
-      return;
     }
     await engine.sendInput(event);
   }
@@ -217,6 +213,18 @@ export class Session {
 
   getEngine(deviceId?: string): Engine | null {
     return this.findRuntime(deviceId)?.engine ?? null;
+  }
+
+  serial(deviceId?: string): string {
+    return this.getRuntime(deviceId).device.serial ?? this.defaultSerial;
+  }
+
+  defaultDeviceId(): string {
+    return this.defaultSerial;
+  }
+
+  isVega(): boolean {
+    return this.engineKind === "vega";
   }
 
   getDevice(deviceId?: string): DeviceInfo | undefined {

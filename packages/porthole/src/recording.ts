@@ -1,7 +1,5 @@
-import { writeFile } from "node:fs/promises";
-import WebSocket from "ws";
 import { decodeVideoPacket } from "./protocol.js";
-import { discoverSession, type ControlClientOptions } from "./control-client.js";
+import { postSessionJson, type ControlClientOptions } from "./control-client.js";
 import { createMp4, type H264Sample } from "./mp4-writer.js";
 
 export interface RecordingOptions extends ControlClientOptions {
@@ -17,51 +15,17 @@ export interface RecordingResult {
 }
 
 export async function recordSession(opts: RecordingOptions): Promise<RecordingResult> {
-  const session = await discoverSession(opts);
-  const health = await fetchHealth(session.url, session.serial);
-  const url = websocketUrl(session.url, session.serial);
-  const recorder = new H264Recorder(health.width, health.height);
-  const startedAt = Date.now();
-
-  await new Promise<void>((resolve, reject) => {
-    const ws = new WebSocket(url);
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      ws.close();
-      resolve();
-    };
-    const fail = (error: Error) => {
-      if (done) return;
-      done = true;
-      ws.close();
-      reject(error);
-    };
-    const timeout =
-      opts.durationMs === undefined ? undefined : setTimeout(finish, opts.durationMs);
-
-    ws.on("message", (data) => {
-      const buffer = data instanceof Buffer ? data : Buffer.from(data as ArrayBuffer);
-      recorder.addPacket(buffer);
-    });
-    ws.on("error", fail);
-    ws.on("close", () => {
-      if (timeout) clearTimeout(timeout);
-      if (!done && opts.durationMs === undefined) resolve();
-    });
-    process.once("SIGINT", finish);
+  await postSessionJson("/api/recording/start", { path: opts.output }, opts);
+  await new Promise<void>((resolve) => {
+    if (opts.durationMs !== undefined) {
+      setTimeout(resolve, opts.durationMs);
+    } else {
+      process.once("SIGINT", () => resolve());
+    }
   });
-
-  const durationMs = Date.now() - startedAt;
-  const mp4 = recorder.finalize(durationMs);
-  await writeFile(opts.output, mp4);
-  return {
-    ok: true,
-    path: opts.output,
-    samples: recorder.sampleCount,
-    durationMs,
-  };
+  const { response } = await postSessionJson("/api/recording/stop", {}, opts);
+  const result = response as { path: string; samples: number; durationMs: number };
+  return { ok: true, ...result };
 }
 
 export class H264Recorder {
@@ -110,29 +74,6 @@ export class H264Recorder {
       samples: this.#samples,
     });
   }
-}
-
-async function fetchHealth(
-  sessionUrl: string,
-  deviceId: string,
-): Promise<{ width: number; height: number }> {
-  const url = new URL(sessionUrl);
-  url.pathname = "/health";
-  url.searchParams.set("device", deviceId);
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Unable to read session health: ${response.status}`);
-  const body = (await response.json()) as { width?: number; height?: number };
-  if (!body.width || !body.height)
-    throw new Error("Session health does not include video dimensions.");
-  return { width: body.width, height: body.height };
-}
-
-function websocketUrl(sessionUrl: string, deviceId: string): string {
-  const url = new URL(sessionUrl);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = "/ws";
-  url.searchParams.set("device", deviceId);
-  return url.toString();
 }
 
 function hasIdrNal(data: Uint8Array): boolean {

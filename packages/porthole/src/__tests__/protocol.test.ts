@@ -4,6 +4,8 @@ import {
   decodeVideoPacket,
   encodeInputEvent,
   encodeVideoPacket,
+  formatActor,
+  parseActor,
   type InputEvent,
 } from "../protocol.js";
 
@@ -40,6 +42,23 @@ describe("video packet protocol", () => {
       data: new Uint8Array([4, 5, 6]),
       deviceId: "emulator-5556",
     });
+  });
+});
+
+describe("actor header", () => {
+  const fallback = { kind: "cli" as const };
+  it("round-trips valid actor identities", () => {
+    expect(parseActor(formatActor({ kind: "agent", id: "mcp_1" }), fallback)).toEqual({
+      kind: "agent",
+      id: "mcp_1",
+    });
+    expect(parseActor("human", fallback)).toEqual({ kind: "human" });
+  });
+  it("rejects malformed kinds and ids", () => {
+    for (const value of ["robot:mcp", "agent:bad id", "agent:", "agent:a:b"]) {
+      expect(parseActor(value, fallback)).toEqual(fallback);
+    }
+    expect(parseActor("agent:" + "x".repeat(70), fallback).id).toHaveLength(64);
   });
 });
 
