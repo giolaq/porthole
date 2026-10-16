@@ -16,6 +16,7 @@ import { resolveTarget } from "../target-resolution.js";
 import { readState } from "../state.js";
 import { ensureVegaVirtualDevice } from "../engine/vega-engine.js";
 import { parsePort } from "./shared.js";
+import { ensurePortFree } from "../port-check.js";
 
 export interface StartOptions {
   port: string;
@@ -188,10 +189,44 @@ export async function startVegaSession(opts: StartOptions): Promise<void> {
   process.on("SIGTERM", () => void stopForSignal());
 }
 
+export interface DetachedSessionRequest {
+  devices: string[];
+  port?: number;
+  preview?: boolean;
+  quiet?: boolean;
+}
+
 export async function startDetachedSession(
-  avds: string[],
-  opts: StartOptions,
-): Promise<void> {
+  avdsOrRequest: string[] | DetachedSessionRequest,
+  cliOpts?: StartOptions,
+): Promise<Awaited<ReturnType<typeof readState>>["sessions"] | undefined> {
+  const requestMode = !Array.isArray(avdsOrRequest);
+  const avds = requestMode ? [] : avdsOrRequest;
+  let selectedPort = requestMode ? avdsOrRequest.port : undefined;
+  if (requestMode && selectedPort === undefined) {
+    for (let candidate = 3200; candidate < 3300; candidate++) {
+      if (!(await ensurePortFree(candidate, "127.0.0.1"))) {
+        selectedPort = candidate;
+        break;
+      }
+    }
+    if (selectedPort === undefined)
+      throw new Error("No free Porthole port in 3200..3299.");
+  }
+  const opts: StartOptions = requestMode
+    ? {
+        port: String(selectedPort),
+        device: avdsOrRequest.devices.join(","),
+        host: "127.0.0.1",
+        preview: avdsOrRequest.preview ?? false,
+        quiet: avdsOrRequest.quiet ?? true,
+        maxSize: "1280",
+        maxFps: "30",
+      }
+    : (cliOpts ??
+      (() => {
+        throw new Error("Start options are required.");
+      })());
   const cliPath = fileURLToPath(new URL("../cli.js", import.meta.url));
   const args = [cliPath, "start"];
   args.push(...avds);
@@ -219,6 +254,7 @@ export async function startDetachedSession(
   let sessions: Awaited<ReturnType<typeof readState>>["sessions"] = [];
   const expectedSessions = Math.max(1, avds.length, parseSerialList(opts.device).length);
   while (Date.now() < deadline) {
+    if (child.exitCode !== null) break;
     const state = await readState();
     sessions = state.sessions.filter(
       (record) => record.port === port && record.pid === child.pid,
@@ -228,10 +264,13 @@ export async function startDetachedSession(
   }
 
   if (sessions.length === 0) {
+    if (requestMode)
+      throw new Error("Detached server did not become ready before the timeout.");
     console.error("Detached server did not become ready before the timeout.");
     process.exit(1);
   }
 
+  if (requestMode) return sessions;
   if (opts.quiet) {
     process.stdout.write(
       JSON.stringify(sessions.length === 1 ? sessions[0] : { sessions }) + "\n",

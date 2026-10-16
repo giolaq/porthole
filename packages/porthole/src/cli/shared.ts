@@ -3,10 +3,12 @@ import type { ScrollDirection } from "../gesture.js";
 export function sessionControlOpts(opts: { port?: string; device?: string }): {
   port?: number;
   device?: string;
+  actor: { kind: "cli" | "ci" };
 } {
   return {
     port: parseOptionalPort(opts.port),
     device: opts.device,
+    actor: { kind: process.env["CI"] ? "ci" : "cli" },
   };
 }
 

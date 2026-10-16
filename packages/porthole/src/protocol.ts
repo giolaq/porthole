@@ -74,6 +74,28 @@ export type DeviceProfile = "phone" | "tv";
 export type DeviceState = "running" | "stopped" | "offline";
 export type VideoMode = "webcodecs" | "mjpeg";
 
+export type ActorKind = "human" | "agent" | "cli" | "ci";
+export interface Actor {
+  kind: ActorKind;
+  id?: string;
+}
+export const ACTOR_HEADER = "x-porthole-actor";
+const ACTOR_KINDS: readonly ActorKind[] = ["human", "agent", "cli", "ci"];
+
+export function formatActor(actor: Actor): string {
+  return actor.id ? `${actor.kind}:${actor.id}` : actor.kind;
+}
+
+export function parseActor(value: string | undefined | null, fallback: Actor): Actor {
+  if (!value) return fallback;
+  const [kind, ...parts] = value.split(":");
+  if (!ACTOR_KINDS.includes(kind as ActorKind) || parts.length > 1) return fallback;
+  const id = parts[0];
+  if (id === undefined) return { kind: kind as ActorKind };
+  if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) return fallback;
+  return { kind: kind as ActorKind, id: id.slice(0, 64) };
+}
+
 export interface ProtocolDevice {
   name: string;
   serial: string | null;

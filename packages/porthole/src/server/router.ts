@@ -3,6 +3,10 @@ import { basename } from "node:path";
 import type { DeviceInfo } from "../device-manager.js";
 import type { HttpServerOptions } from "./http.js";
 import type { MjpegPoller } from "./mjpeg.js";
+import type { ActionContext, SessionHandle } from "../actions/context.js";
+import { ACTOR_HEADER, parseActor } from "../protocol.js";
+import { asPortholeError } from "../actions/errors.js";
+import { actionDevice } from "../actions/context.js";
 
 export interface RouteContext {
   req: IncomingMessage;
@@ -16,6 +20,48 @@ export interface Route {
   method: "GET" | "POST";
   path: string;
   handler(ctx: RouteContext): Promise<void>;
+}
+
+const fallbackSessions = new WeakMap<HttpServerOptions, SessionHandle>();
+
+export function actionContext(ctx: RouteContext): ActionContext {
+  const { opts, deviceId } = ctx;
+  let session = opts.sessionHandle ?? fallbackSessions.get(opts);
+  if (!session) {
+    session = {
+      getEngine: opts.getEngine,
+      getDevice: (id) => opts.getDevice?.(id),
+      serial: (id) => opts.getDevice?.(id)?.serial ?? "",
+      defaultDeviceId: () => opts.getDevice?.()?.serial ?? "",
+      sendInput: async (event, id) => {
+        if (opts.handleInput) return opts.handleInput(event, id);
+        const engine = opts.getEngine(id);
+        if (!engine) throw new Error("No active engine.");
+        await engine.sendInput(event);
+      },
+    };
+    fallbackSessions.set(opts, session);
+  }
+  return {
+    session,
+    deviceId: deviceId ?? session.defaultDeviceId(),
+    actor: parseActor(ctx.req.headers[ACTOR_HEADER] as string | undefined, {
+      kind: "cli",
+    }),
+  };
+}
+
+export async function sendActionError(
+  res: ServerResponse,
+  error: unknown,
+): Promise<void> {
+  const result = asPortholeError(error);
+  await sendJson(res, result.httpStatus, {
+    ok: false,
+    error: result.message,
+    code: result.code,
+    retryable: result.retryable,
+  });
 }
 export async function routeRequest(ctx: RouteContext, routes: Route[]): Promise<boolean> {
   const { req, res, url, opts } = ctx;
@@ -37,7 +83,19 @@ export async function routeRequest(ctx: RouteContext, routes: Route[]): Promise<
     );
   });
   if (!route) return false;
-  await route.handler(ctx);
+  try {
+    if (
+      url.pathname.startsWith("/api/") &&
+      url.pathname !== "/api/state" &&
+      url.pathname !== "/api/devices"
+    ) {
+      actionDevice(actionContext(ctx));
+    }
+    await route.handler(ctx);
+  } catch (error) {
+    if (res.headersSent) throw error;
+    await sendActionError(res, error);
+  }
   return true;
 }
 

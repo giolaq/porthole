@@ -62,6 +62,11 @@ describe("HTTP route contract", () => {
     const { base } = await start();
     const response = await fetch(base + path, { method });
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ ok: false, error: "No active device." });
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "No active device.",
+      code: "NO_DEVICE",
+      retryable: false,
+    });
   });
 });

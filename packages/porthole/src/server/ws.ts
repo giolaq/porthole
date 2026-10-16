@@ -5,7 +5,8 @@ import { assertInputAllowed, parseInputEvent } from "../input-validation.js";
 import type { DeviceInfo } from "../device-manager.js";
 import { encodeVideoPacket } from "../protocol.js";
 import { debugLog } from "../log.js";
-import { sendGesture } from "../gesture.js";
+import type { SessionHandle } from "../actions/context.js";
+import { sendInput } from "../actions/input.js";
 
 export interface WsServerOptions {
   httpServer: Server;
@@ -13,6 +14,7 @@ export interface WsServerOptions {
   getDevice?: (deviceId?: string) => DeviceInfo | undefined;
   getDefaultDeviceId?: () => string | undefined;
   token?: string;
+  sessionHandle?: SessionHandle;
 }
 
 export function createWsServer(opts: WsServerOptions) {
@@ -75,11 +77,21 @@ export function createWsServer(opts: WsServerOptions) {
         const event = parseInputEvent(JSON.parse(data.toString()));
         const device = getDevice?.(deviceId);
         if (device) assertInputAllowed(device.profile, event);
-        if (event.kind === "gesture") {
-          void sendGesture(event, (touch) => engine.sendInput(touch));
-        } else {
-          void engine.sendInput(event);
-        }
+        const session: SessionHandle = opts.sessionHandle ?? {
+          getEngine,
+          getDevice: (id) => getDevice?.(id),
+          serial: (id) => getDevice?.(id)?.serial ?? "",
+          defaultDeviceId: () => deviceId,
+          sendInput: async (input, id) => {
+            const target = getEngine(id);
+            if (!target) throw new Error("No active engine.");
+            await target.sendInput(input);
+          },
+        };
+        void sendInput(
+          { session, deviceId, actor: { kind: "human", id: "browser" } },
+          event,
+        ).catch((error) => debugLog("ws", `input failed: ${String(error)}`));
       } catch {
         debugLog("ws", "ignored invalid input message");
         // Invalid message, ignore
