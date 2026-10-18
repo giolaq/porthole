@@ -50,3 +50,13 @@ node_modules/.bin/porthole focused -q
 
 The browser shows the TV stream and remote. For the complete human and agent
 walkthrough, see [the demo script](../../docs/demo/human-agent-demo.md).
+
+## Movie details
+
+Focus a card and press Enter or the remote's Select button to open its detail
+screen. It shows the title, release year, and synopsis. Select **Back to movies**
+or press the remote's Back button to return with the same movie focused,
+including movies farther along the shelf.
+
+Smoke check: open the first movie with Enter, return with the on-screen button,
+then navigate to the last movie, open it with Select, and return with Back.
