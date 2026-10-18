@@ -122,7 +122,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
 
     if (configData) {
       const codec = parseCodecFromSps(configData);
-      decoder.configure({ codec });
+      decoder.configure({ codec, optimizeForLatency: true });
       configured = true;
       waitingForKeyframe = true;
     }
@@ -143,6 +143,8 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
           console.log(`[porthole] codec=${codec}, config=${configData.length} bytes`);
         decoder.configure({
           codec,
+          // Static emulator screens may deliver only one frame.
+          optimizeForLatency: true,
         });
         configured = true;
         waitingForKeyframe = true;
