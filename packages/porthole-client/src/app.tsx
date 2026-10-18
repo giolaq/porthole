@@ -312,7 +312,8 @@ export function App() {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100vh",
+        height: "100dvh",
+        overflow: "hidden",
         background: "#111",
         color: "#eee",
         fontFamily: "system-ui, sans-serif",
@@ -434,6 +435,9 @@ export function App() {
       <main
         style={{
           flex: 1,
+          // Allow the feed to scroll inside the available height instead of
+          // making this flex item grow to fit its entire activity history.
+          minHeight: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
