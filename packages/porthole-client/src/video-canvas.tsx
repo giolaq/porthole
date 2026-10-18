@@ -1,5 +1,5 @@
 const debug = new URLSearchParams(window.location.search).get("debug") === "1";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { decodeVideoPacket } from "portholejs/protocol";
 
 interface VideoCanvasProps {
@@ -64,7 +64,18 @@ function concatBuffers(a: Uint8Array, b: Uint8Array): Uint8Array {
 
 export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastFrameRef = useRef<VideoFrame | null>(null);
   const lastConfigRef = useRef<Uint8Array | null>(null);
+
+  // React resets the canvas bitmap when health updates its dimensions. Keep
+  // the latest decoded frame so a static screen can be redrawn immediately.
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    const frame = lastFrameRef.current;
+    if (canvas && frame) {
+      canvas.getContext("2d")?.drawImage(frame, 0, 0, width, height);
+    }
+  }, [width, height]);
 
   // A new socket may stream a different device — its cached SPS/PPS must not
   // seed the decoder (wrong parameter sets produce garbage frames).
@@ -97,7 +108,8 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
       decoder = new VideoDecoder({
         output: (frame) => {
           ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
-          frame.close();
+          lastFrameRef.current?.close();
+          lastFrameRef.current = frame;
         },
         error: (e) => {
           console.error("[porthole] decode error:", e.message);
@@ -110,7 +122,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
 
     if (configData) {
       const codec = parseCodecFromSps(configData);
-      decoder.configure({ codec, codedWidth: width, codedHeight: height });
+      decoder.configure({ codec });
       configured = true;
       waitingForKeyframe = true;
     }
@@ -131,8 +143,6 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
           console.log(`[porthole] codec=${codec}, config=${configData.length} bytes`);
         decoder.configure({
           codec,
-          codedWidth: width,
-          codedHeight: height,
         });
         configured = true;
         waitingForKeyframe = true;
@@ -163,7 +173,7 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
           fps: Math.round((windowFrames * 1000) / (now - windowStart)),
           bitrateKbps: Math.round((windowBytes * 8) / (now - windowStart)),
           queue: decoder.decodeQueueSize,
-          resolution: `${width}x${height}`,
+          resolution: `${canvas.width}x${canvas.height}`,
         });
         windowFrames = 0;
         windowBytes = 0;
@@ -194,11 +204,13 @@ export function VideoCanvas({ ws, width, height, onStats }: VideoCanvasProps) {
 
     return () => {
       ws.removeEventListener("message", handleMessage);
+      lastFrameRef.current?.close();
+      lastFrameRef.current = null;
       if (decoder && decoder.state !== "closed") {
         decoder.close();
       }
     };
-  }, [ws, width, height, onStats]);
+  }, [ws, onStats]);
 
   return (
     <canvas

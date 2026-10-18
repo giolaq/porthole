@@ -1,3 +1,4 @@
+import { normalize } from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,7 +11,10 @@ vi.mock("node:fs", () => ({
   existsSync: (path: string) => mocks.files.has(path),
   readdirSync: () => ["0.9.1", "0.24.12112"],
 }));
-vi.mock("node:os", () => ({ homedir: () => "/home/test", tmpdir: () => "/tmp" }));
+vi.mock("node:os", () => ({
+  homedir: () => normalize("/home/test"),
+  tmpdir: () => normalize("/tmp"),
+}));
 vi.mock("node:child_process", () => ({ execFile: mocks.exec }));
 vi.mock("../port-check.js", () => ({ isPortFree: mocks.portFree }));
 vi.mock("node:net", () => ({
@@ -31,7 +35,7 @@ import {
 } from "../engine/vega-engine.js";
 
 beforeEach(() => {
-  vi.stubEnv("PATH", "/tools");
+  vi.stubEnv("PATH", normalize("/tools"));
   vi.stubEnv("PORTHOLE_VEGA_BIN", "");
   vi.stubEnv("PORTHOLE_VDA_BIN", "");
   mocks.files.clear();
@@ -53,38 +57,38 @@ function output(stdout: string) {
 // returns the same stdout/stderr object via its callback.
 describe("Vega SDK discovery", () => {
   it("prefers the active launcher over an older SDK", () => {
-    mocks.files.add("/tools/vega");
-    mocks.files.add("/home/test/vega/sdk/0.9.1/bin/vega");
-    expect(resolveVegaCli()).toBe("/tools/vega");
+    mocks.files.add(normalize("/tools/vega"));
+    mocks.files.add(normalize("/home/test/vega/sdk/0.9.1/bin/vega"));
+    expect(resolveVegaCli()).toBe(normalize("/tools/vega"));
   });
   it("uses vega which to resolve a component-managed SDK", async () => {
-    mocks.files.add("/tools/vega");
-    const vda = "/custom/sdk/vega-sdk/main/0.24.12112/component/bin/vda";
+    mocks.files.add(normalize("/tools/vega"));
+    const vda = normalize("/custom/sdk/vega-sdk/main/0.24.12112/component/bin/vda");
     mocks.files.add(vda);
     mocks.exec.mockImplementation(output(vda + "\n"));
     expect(await resolveVdaBin()).toBe(vda);
     expect(mocks.exec.mock.calls[0]?.slice(0, 2)).toEqual([
-      "/tools/vega",
+      normalize("/tools/vega"),
       ["which", "vda"],
     ]);
   });
   it("honors explicit overrides and rejects missing ones", async () => {
-    vi.stubEnv("PORTHOLE_VDA_BIN", "/explicit/vda");
-    mocks.files.add("/explicit/vda");
-    expect(await resolveVdaBin()).toBe("/explicit/vda");
-    vi.stubEnv("PORTHOLE_VEGA_BIN", "/missing/vega");
+    vi.stubEnv("PORTHOLE_VDA_BIN", normalize("/explicit/vda"));
+    mocks.files.add(normalize("/explicit/vda"));
+    expect(await resolveVdaBin()).toBe(normalize("/explicit/vda"));
+    vi.stubEnv("PORTHOLE_VEGA_BIN", normalize("/missing/vega"));
     expect(() => resolveVegaCli()).toThrow("PORTHOLE_VEGA_BIN not found");
   });
   it("sorts legacy SDK versions numerically", () => {
-    mocks.files.add("/home/test/vega/sdk");
-    mocks.files.add("/home/test/vega/sdk/0.9.1/bin/vega");
-    mocks.files.add("/home/test/vega/sdk/0.24.12112/bin/vega");
-    expect(resolveVegaCli()).toContain("0.24.12112/bin/vega");
+    mocks.files.add(normalize("/home/test/vega/sdk"));
+    mocks.files.add(normalize("/home/test/vega/sdk/0.9.1/bin/vega"));
+    mocks.files.add(normalize("/home/test/vega/sdk/0.24.12112/bin/vega"));
+    expect(resolveVegaCli()).toContain(normalize("0.24.12112/bin/vega"));
   });
 });
 
 describe("Vega startup", () => {
-  beforeEach(() => mocks.files.add("/tools/vega"));
+  beforeEach(() => mocks.files.add(normalize("/tools/vega")));
   it("does not identify an Android console as Vega", async () => {
     mocks.exec.mockImplementation(output('{"running":false}'));
     expect(await isVegaConsoleUp()).toBe(false);
@@ -106,7 +110,7 @@ describe("Vega startup", () => {
       .mockImplementationOnce(output('{"running":true}'));
     await expect(ensureVegaVirtualDevice()).resolves.toBeUndefined();
     expect(mocks.exec.mock.calls[1]?.slice(0, 2)).toEqual([
-      "/tools/vega",
+      normalize("/tools/vega"),
       ["virtual-device", "start", "--no-gui", "--timeout", "240"],
     ]);
   });
