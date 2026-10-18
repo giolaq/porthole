@@ -191,9 +191,8 @@ port-scoped commands when a server is streaming more than one emulator.
 
 ## Fire TV Vega (experimental)
 
-Porthole can stream and control Amazon's [Vega OS](https://developer.amazon.com/docs/vega/0.21/overview.html)
-(Fire TV) virtual device — likely the only browser window into the Vega
-simulator today:
+Porthole can stream and control Amazon's [Vega OS](https://developer.amazon.com/docs/vega/latest/vega-overview)
+(Fire TV) virtual device:
 
 ```sh
 porthole start --vega
@@ -207,11 +206,20 @@ Home, Menu, media keys) plus `porthole remote`, `screenshot`, and
 
 Requirements:
 
-- The [Vega SDK](https://developer.amazon.com/docs/vega/0.21/vega-installation-guide.html)
-  installed (`~/vega/sdk/...`, or point `PORTHOLE_VEGA_BIN` /
-  `PORTHOLE_VDA_BIN` at the `vega` and `vda` binaries)
+- The [Vega SDK](https://developer.amazon.com/docs/vega/latest/setup-overview)
+  installed with `vega` on `PATH`. Porthole uses the active SDK selected by
+  `vega sdk use` and resolves its device adaptor through `vega which vda`.
+  `~/vega/bin/vega` and legacy SDK installations are also discovered.
+  Set `PORTHOLE_VEGA_BIN` / `PORTHOLE_VDA_BIN` to override the binaries.
 - Developer mode enabled on the virtual device (remote input is injected
   through the on-device `inputd-cli`, exposed by the developer shell service)
+
+Compatibility checked with **Vega SDK 0.24.12112 / CLI 1.4.2** on macOS
+Apple Silicon: headless boot, attach, PNG screenshots, MJPEG frames, and
+D-pad focus movement in the SDK 0.24 Hello World sample were verified.
+The VVD uses ports 5554 and 5555; stop any Android emulator
+using those ports before starting Vega. Porthole checks the SDK
+`virtual-device status` before attaching and rejects conflicting listeners.
 
 Not yet available on Vega: H.264/WebCodecs streaming, touch/gesture input
 (TV profile), `dump-ui`/`focused`/`focus-on`, and MP4 recording. The
