@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: [20, 22]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -45,7 +45,7 @@ jobs:
     # dispatch, not on every PR iteration.
     if: github.event_name != 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
