@@ -31,7 +31,7 @@ jobs:
           test -f packages/porthole/assets/scrcpy-server
       - name: Open scrcpy pin PR
         if: steps.pin.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: chore/bump-scrcpy-${{ steps.pin.outputs.version }}
           title: "chore: bump scrcpy server to ${{ steps.pin.outputs.version }}"
