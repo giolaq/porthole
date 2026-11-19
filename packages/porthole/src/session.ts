@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
+import { isIP } from "node:net";
 import { promisify } from "node:util";
 import type { Engine } from "./engine/types.js";
 import { ScrcpyEngine } from "./engine/scrcpy-engine.js";
@@ -102,9 +103,10 @@ export class Session {
     this.maxFps = opts.maxFps ?? 30;
     this.bitrate = opts.bitrate;
     this.detached = opts.detached ?? false;
-    this.token =
-      opts.token ??
-      (isLanHost(opts.host) ? randomBytes(18).toString("base64url") : undefined);
+    this.token = opts.token;
+    if (!this.token && !isLoopbackHost(this.host)) {
+      this.token = randomBytes(18).toString("base64url");
+    }
     this.forceMjpeg = opts.forceMjpeg ?? false;
     this.engineKind = opts.engineKind ?? "scrcpy";
   }
@@ -365,6 +367,12 @@ export class Session {
   }
 }
 
-function isLanHost(host: string): boolean {
-  return host === "0.0.0.0" || host === "::" || host === "";
+function isLoopbackHost(host: string): boolean {
+  const family = isIP(host);
+  if (family === 4) return host.startsWith("127.");
+  if (family !== 6 || host.includes("%")) return false;
+
+  // Canonicalize IPv6 to handle expanded and IPv4-mapped loopback literals.
+  const address = new URL(`http://[${host}]`).hostname;
+  return address === "[::1]" || /^\[::ffff:7f[0-9a-f]{2}:/.test(address);
 }
