@@ -69,11 +69,17 @@ with the manager. Workers need source read access and local workspace writes.
 Keep host home directories, browser sessions, CLI logins, signing keys, and
 release tokens outside the sandbox.
 
-The worker reproduces the problem, implements the change, runs the acceptance
-test and tries a failure case. Return the diff, commands, results and any
-skipped checks. The manager checks the diff, independently verifies the proof,
-opens a PR and reports the result to the owner. Use the PR checklist for
-acceptance criteria when the request has no issue. Keep merges with a human.
+The worker writes and runs the acceptance test before implementation and
+observes the expected failure. After implementing the change, rerun the same
+test, verify it passes and try a failure case. Return the diff, commands,
+actual results and any skips or blockers with reasons.
+
+The manager checks the diff, independently verifies the proof and opens a PR.
+After every push, recheck the PR head SHA. Before final reporting, confirm the
+head again and wait for GitHub CI on the latest PR commit to finish. Record the
+head SHA, CI check link and actual outcomes, including skips or blockers with
+reasons. Use the PR checklist for acceptance criteria when the request has no
+issue. Keep merges with a human.
 
 Choose the highest applicable review level. Escalate uncertainty to the owner.
 

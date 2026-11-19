@@ -8,7 +8,9 @@
 
 ## Proof
 
-<!-- Give the revision, commands and actual results. Include reproduction, a failure case, relevant UI/emulator/security checks and any skips with reasons. -->
+<!-- Record commands and actual outcomes, including reproduction, a failure case, relevant UI/emulator/security checks and any skips or blockers with reasons. Record the latest PR head SHA and GitHub CI check link. -->
 
+- [ ] Wrote and ran the acceptance test before implementation, observed the expected failure and verified that the same test passed after implementation.
 - [ ] The manager independently checked the diff and verified the acceptance evidence.
+- [ ] Rechecked the PR head SHA after every push and before final reporting. Waited for GitHub CI on the latest PR commit to finish.
 - [ ] The owner received the result and any outstanding decisions. A human handles merge.
