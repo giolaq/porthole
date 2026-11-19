@@ -1,6 +1,16 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { DeviceProfile } from "./profiles.js";
 
 export interface PortholeSessionRecord {
@@ -42,40 +52,115 @@ export async function writeState(
   state: PortholeState,
   path = statePath(),
 ): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.${process.pid}.tmp`;
-  await writeFile(tmpPath, JSON.stringify(state, null, 2) + "\n");
-  await rename(tmpPath, path);
+  await withStateLock(path, (path, temporary) => replaceState(state, path, temporary));
+}
+
+async function replaceState(state: PortholeState, path: string, temporary: string) {
+  await writeFile(temporary, JSON.stringify(state, null, 2) + "\n");
+  await rename(temporary, path);
 }
 
 export async function upsertSession(
   record: PortholeSessionRecord,
   path = statePath(),
 ): Promise<void> {
-  const state = await readState(path);
-  const sessions = state.sessions.filter((session) => session.serial !== record.serial);
-  sessions.push(record);
-  await writeState({ sessions }, path);
+  await withStateLock(path, async (path, temporary) => {
+    const state = await readState(path);
+    const sessions = state.sessions.filter((session) => session.serial !== record.serial);
+    sessions.push(record);
+    await replaceState({ sessions }, path, temporary);
+  });
 }
 
 export async function removeSession(
   match: { serial?: string; port?: number; pid?: number },
   path = statePath(),
 ): Promise<void> {
-  const state = await readState(path);
-  const sessions = state.sessions.filter((session) => {
-    if (match.serial && session.serial === match.serial) return false;
-    if (match.port !== undefined && session.port === match.port) return false;
-    if (match.pid !== undefined && session.pid === match.pid) return false;
-    return true;
+  await withStateLock(path, async (path, temporary) => {
+    const state = await readState(path);
+    const sessions = state.sessions.filter((session) => {
+      if (match.serial && session.serial === match.serial) return false;
+      if (match.port !== undefined && session.port === match.port) return false;
+      if (match.pid !== undefined && session.pid === match.pid) return false;
+      return true;
+    });
+
+    if (sessions.length === 0) {
+      await rm(path, { force: true });
+      return;
+    }
+
+    await replaceState({ sessions }, path, temporary);
   });
+}
 
-  if (sessions.length === 0) {
-    await rm(path, { force: true });
-    return;
+async function withStateLock(
+  path: string,
+  update: (path: string, temporary: string) => Promise<void>,
+): Promise<void> {
+  const parent = dirname(path);
+  await mkdir(parent, { recursive: true });
+  path = join(await realpath(parent), basename(path));
+  const lock = `${path}.lock`;
+  await mkdir(lock, { recursive: true });
+  const own = await mkdtemp(join(lock, `${process.pid}-`));
+  const deadline = performance.now() + 5000;
+
+  try {
+    // Lamport's bakery algorithm. Publishing our directory announces that we're
+    // choosing a ticket. The smallest (ticket, directory name) goes first.
+    const observed = await Promise.all(
+      (await contenders(lock)).map((name) => readTicket(join(lock, name))),
+    );
+    const ticket = Math.max(0, ...observed) + 1;
+    await mkdir(join(own, String(ticket)));
+
+    for (const name of await contenders(lock)) {
+      const other = join(lock, name);
+      if (other === own) continue;
+      for (;;) {
+        if (processExited(Number(name.split("-")[0]))) {
+          await rm(other, { recursive: true, force: true });
+          break;
+        }
+        const current = await readTicket(other);
+        if (current === -1 || current > ticket || (current === ticket && other > own)) {
+          break;
+        }
+        if (performance.now() >= deadline) {
+          throw new Error(`Timed out waiting to update session registry at ${path}`);
+        }
+        await delay(20);
+      }
+    }
+
+    await update(path, join(own, "state.tmp"));
+  } finally {
+    await rm(own, { recursive: true, force: true });
   }
+}
 
-  await writeState({ sessions }, path);
+async function contenders(lock: string) {
+  return (await readdir(lock)).filter((name) => /^[1-9]\d*-[a-zA-Z0-9]+$/.test(name));
+}
+
+async function readTicket(directory: string): Promise<number> {
+  try {
+    const entries = await readdir(directory);
+    return Number(entries.find((entry) => /^\d+$/.test(entry)) ?? 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return -1;
+    throw error;
+  }
+}
+
+function processExited(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ESRCH";
+  }
 }
 
 export async function isSerialBootedByPorthole(serial: string): Promise<boolean> {
