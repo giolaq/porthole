@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { WebSocketServer } from "ws";
 import type { Engine } from "./engine/types.js";
 import { ScrcpyEngine } from "./engine/scrcpy-engine.js";
 import { VegaEngine } from "./engine/vega-engine.js";
@@ -57,6 +58,7 @@ export class Session {
   private broadcastServerEvent: ((event: ServerEvent, deviceId: string) => void) | null =
     null;
   private server: Server | null = null;
+  private wsServer: WebSocketServer | null = null;
   private stopPromise: Promise<void> | null = null;
   private attachEngine: ((deviceId: string, engine: Engine) => void) | null = null;
   private readonly runtimes = new Map<string, DeviceRuntime>();
@@ -132,7 +134,7 @@ export class Session {
     });
     this.server = server;
 
-    const { attachEngine, broadcast } = createWsServer({
+    const { wss, attachEngine, broadcast } = createWsServer({
       httpServer: server,
       getEngine: (deviceId) => this.getEngine(deviceId),
       getDevice: (deviceId) => this.getDevice(deviceId),
@@ -143,6 +145,7 @@ export class Session {
       questionStore: this.questions,
       annotationStore: this.annotations,
     });
+    this.wsServer = wss;
     this.attachEngine = attachEngine;
     this.broadcastServerEvent = broadcast;
 
@@ -304,6 +307,12 @@ export class Session {
   }
 
   private async doStop(): Promise<void> {
+    if (this.wsServer) {
+      // Stop accepting upgrades before draining existing preview connections.
+      this.wsServer.close();
+      for (const client of this.wsServer.clients) client.terminate();
+      this.wsServer = null;
+    }
     for (const runtime of this.runtimes.values()) {
       runtime.stopping = true;
       if (runtime.engine) {
@@ -314,8 +323,7 @@ export class Session {
     if (this.server) {
       const server = this.server;
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-      // close() only stops new connections; the preview's open WebSocket and
-      // keep-alive sockets would otherwise hold the server open indefinitely.
+      // Close remaining HTTP connections. Upgraded sockets were handled above.
       server.closeAllConnections();
       await closed;
       this.server = null;
