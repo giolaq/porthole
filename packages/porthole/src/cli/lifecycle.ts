@@ -218,7 +218,7 @@ export function register(program: Command): void {
           }
           await session.stop();
           for (const target of targets) {
-            if (!opts.keepAlive && target.device.serial) {
+            if (target.bootedByUs && !opts.keepAlive && target.device.serial) {
               if (!opts.quiet) console.log(`Stopping ${target.device.name}...`);
               await shutdownDevice(sdk, target.device.serial);
             }
@@ -240,6 +240,7 @@ export function register(program: Command): void {
       const devices = await listDevices();
       const state = await readState();
       const targetSerials = new Set<string>();
+      const signaledPids = new Set<number>();
       const matchedSessions = state.sessions.filter(
         (session) => !avd || session.avdName === avd,
       );
@@ -253,7 +254,7 @@ export function register(program: Command): void {
         }
       }
       for (const session of matchedSessions) {
-        targetSerials.add(session.serial);
+        if (avd || session.bootedByUs) targetSerials.add(session.serial);
         if (session.detached && session.pid !== process.pid) {
           const siblingOnSharedServer =
             avd !== undefined &&
@@ -264,6 +265,8 @@ export function register(program: Command): void {
                 other.serial !== session.serial,
             );
           if (!siblingOnSharedServer) {
+            if (signaledPids.has(session.pid)) continue;
+            signaledPids.add(session.pid);
             try {
               process.kill(session.pid, "SIGTERM");
             } catch {
