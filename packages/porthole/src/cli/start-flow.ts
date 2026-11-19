@@ -137,9 +137,6 @@ export async function startVegaSession(opts: StartOptions): Promise<void> {
     logSurvivableError("unhandledRejection", error),
   );
 
-  if (!opts.quiet) console.log("Checking the Vega Virtual Device...");
-  await ensureVegaVirtualDevice();
-
   const device: DeviceInfo = {
     name: "Vega_Virtual_Device",
     serial: "emulator-5554",
@@ -147,17 +144,21 @@ export async function startVegaSession(opts: StartOptions): Promise<void> {
     state: "running",
   };
 
-  const session = new Session({
-    device,
-    port: parseInt(opts.port, 10),
-    host: opts.host,
-    detached: process.env["PORTHOLE_DETACHED_CHILD"] === "1",
-    // No H.264 stream on Vega — the browser renders the MJPEG poller feed.
-    forceMjpeg: true,
-    engineKind: "vega",
-  });
-
+  let session: Session;
   try {
+    if (!opts.quiet) console.log("Checking the Vega Virtual Device...");
+    await ensureVegaVirtualDevice();
+
+    session = new Session({
+      device,
+      port: parseInt(opts.port, 10),
+      host: opts.host,
+      detached: process.env["PORTHOLE_DETACHED_CHILD"] === "1",
+      // No H.264 stream on Vega — the browser renders the MJPEG poller feed.
+      forceMjpeg: true,
+      engineKind: "vega",
+    });
+
     const { url } = await session.start();
     if (!opts.quiet) {
       console.log(`Attached to ${device.name} [tv] (${device.serial}, Vega)`);
