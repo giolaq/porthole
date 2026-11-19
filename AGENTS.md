@@ -2,7 +2,13 @@
 
 A window into your Android emulator — streams phone and TV AVDs to the browser with full input control.
 
-Full requirements and milestones live in `docs/PRD.md`. This file covers conventions only.
+Full requirements and milestones live in `docs/PRD.md`. This file is the
+canonical source of repository rules for every development agent across all
+packages and examples. Follow the [request-to-pull-request workflow](#from-request-to-pull-request).
+If an agent's tool does not load these rules automatically, the manager or
+launcher must supply them in the agent's context before work begins. The
+manager or launcher must run the worker in an isolated sandbox without merge
+credentials.
 
 ## Tech stack
 

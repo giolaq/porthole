@@ -10,9 +10,12 @@
 At assessment time GitHub reported no active rules on `main`, auto-merge
 disabled, and read-only default workflow permissions. The scheduled scrcpy
 pin job explicitly requests contents and PR writes to open update PRs.
-Repository files alone cannot prevent a write-capable account from pushing to
-main or merging. The owner must decide who can merge, which checks and
-approvals to require, and where to provision workers without host credentials.
+The [active main ruleset](https://github.com/giolaq/porthole/rules/27628506)
+now requires a pull request and the six GitHub Actions matrix checks for Node
+20 and 22 on Linux, macOS and Windows. It applies to admins too. The owner
+keeps the merge decision. GitHub requires zero additional approvals so the
+sole maintainer can merge their own PR. Each agent launcher must provide the
+worker sandbox and keep merge-capable credentials outside it.
 
-GitHub Issues had no open items to rank. The four phases of the current
+At the initial assessment, GitHub Issues had no open items to rank. The four phases of the current
 development plan already have merged PRs (#17–#20).

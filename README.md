@@ -366,6 +366,8 @@ Two capability notes:
 
 ## Development
 
+Follow the [request-to-pull-request workflow](AGENTS.md#from-request-to-pull-request).
+
 ```sh
 npm install
 npm run build
