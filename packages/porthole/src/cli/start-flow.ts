@@ -14,7 +14,7 @@ import {
 import { Session, type SessionDeviceOptions } from "../session.js";
 import { resolveTarget } from "../target-resolution.js";
 import { readState } from "../state.js";
-import { ensureVegaVirtualDevice } from "../engine/vega-engine.js";
+import { ensureVegaVirtualDevice } from "../vega-device.js";
 import { parsePort } from "./shared.js";
 import { ensurePortFree } from "../port-check.js";
 

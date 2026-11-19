@@ -59,3 +59,34 @@ Integration tests (require a booted emulator) are gated behind `PORTHOLE_EMU=1`.
 - Respect non-goals in `docs/PRD.md` §4: no iOS, no physical devices, no audio.
 - Pure-logic unit tests (config.ini parsing, keycodes, CLI args) need no emulator.
 - Published package name: `portholejs` (bin: `porthole`).
+
+## From request to pull request
+
+The manager takes one issue or request, defines a CI-runnable acceptance test
+and hands it to one coding agent. Give the worker a disposable sandbox, a
+clean checkout, its own context and a way to terminate it. Keep GitHub writes
+with the manager. Workers need source read access and local workspace writes.
+Keep host home directories, browser sessions, CLI logins, signing keys, and
+release tokens outside the sandbox.
+
+The worker reproduces the problem, implements the change, runs the acceptance
+test and tries a failure case. Return the diff, commands, results and any
+skipped checks. The manager checks the diff, independently verifies the proof,
+opens a PR and reports the result to the owner. Use the PR checklist for
+acceptance criteria when the request has no issue. Keep merges with a human.
+
+Choose the highest applicable review level. Escalate uncertainty to the owner.
+
+| Radius                                                                | Review | Evidence                                                                                                                                         |
+| --------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Green (docs, local non-runtime changes)                               | AI 1   | Focused check and diff review. Check examples for accidental credentials.                                                                        |
+| Yellow (runtime or interface changes)                                 | AI 2   | Build, coverage, lint, types and a failure case. Exercise changed boundaries with invalid input. Run Playwright for changed browser flows.       |
+| Yellow (cross-package or multi-operator behavior)                     | AI 3   | AI 2 plus an independent trace through each affected operator, including an adverse case. Run emulator integration for affected device behavior. |
+| Red (auth, destructive device actions, release or permission changes) | Human  | AI 3 evidence where applicable, explicit failure and security checks, and human approval before merge.                                           |
+
+For live Android proof use an isolated AVD with `PORTHOLE_EMU=1 npm test`.
+Browser proof uses `PORTHOLE_E2E=1 npm run test:e2e` with a running session.
+Record unavailable checks in the PR. Ask the owner before changing CI,
+permissions, credentials, dependencies or release settings. When a reviewer
+corrects a recurring mistake, fix the code, add a deterministic lint rule or
+test, then update the relevant rule here.

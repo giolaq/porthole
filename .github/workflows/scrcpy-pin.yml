@@ -39,4 +39,12 @@ jobs:
           body: |
             Updates the pinned scrcpy-server download to `${{ steps.pin.outputs.version }}` and SHA-256 `${{ steps.pin.outputs.sha256 }}`.
 
-            Reminder: verify the `AdbScrcpyOptions` class still matches the scrcpy server protocol before merging.
+            **Blast radius:** Red (downloaded executable). **Review:** Human.
+
+            **Acceptance:** Run `node packages/porthole/scripts/download-scrcpy-server.mjs` in a clean checkout and confirm the downloaded asset matches the proposed SHA-256.
+
+            **Proof:** The download and checksum step passed before this PR was opened. [View the run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+            - [ ] Independently verify the upstream release asset and digest.
+            - [ ] Check the `AdbScrcpyOptions` class against this server protocol and run Android integration and Playwright on the proposed revision. Record results or skips here.
+            - [ ] A human reviews the evidence and decides whether to merge.

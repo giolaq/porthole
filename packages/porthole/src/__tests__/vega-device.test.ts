@@ -32,7 +32,7 @@ import {
   isVegaConsoleUp,
   resolveVdaBin,
   resolveVegaCli,
-} from "../engine/vega-engine.js";
+} from "../vega-device.js";
 
 beforeEach(() => {
   vi.stubEnv("PATH", normalize("/tools"));
