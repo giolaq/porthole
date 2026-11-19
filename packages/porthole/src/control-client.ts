@@ -127,7 +127,9 @@ export async function discoverSession(
     if (await isSessionAlive(session, opts)) {
       return session;
     }
-    await removeSession({ port: session.port, pid: session.pid });
+    if (isPidStale(session.pid)) {
+      await removeSession({ pid: session.pid });
+    }
   }
 
   throw new Error(
@@ -160,6 +162,16 @@ async function isSessionAlive(
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+function isPidStale(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "ESRCH";
   }
 }
 
