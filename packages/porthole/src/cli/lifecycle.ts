@@ -61,21 +61,21 @@ export function register(program: Command): void {
     .command("doctor")
     .description("Check local Porthole and Android emulator prerequisites")
     .option("-q, --quiet", "JSON output")
-    .action((opts: { quiet?: boolean }) => {
-      void runCliAction(opts, async () => {
+    .action((opts: { quiet?: boolean }) =>
+      runCliAction(opts, async () => {
         const checks = await runDoctor();
         if (opts.quiet) {
           process.stdout.write(JSON.stringify({ checks }) + "\n");
-          return;
+        } else {
+          for (const check of checks) {
+            const mark = check.ok ? "OK" : "FAIL";
+            console.log(`${mark} ${check.name}: ${check.detail}`);
+            if (!check.ok && check.fix) console.log(`  fix: ${check.fix}`);
+          }
         }
-        for (const check of checks) {
-          const mark = check.ok ? "OK" : "FAIL";
-          console.log(`${mark} ${check.name}: ${check.detail}`);
-          if (!check.ok && check.fix) console.log(`  fix: ${check.fix}`);
-        }
-        if (checks.some((check) => !check.ok)) process.exit(1);
-      });
-    });
+        if (checks.some((check) => !check.ok)) process.exitCode = 1;
+      }),
+    );
 
   program
     .command("start [avds...]", { isDefault: true })
